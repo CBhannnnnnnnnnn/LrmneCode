@@ -1,4 +1,0 @@
-backend
-frontend
-handlers
-proxy_layer

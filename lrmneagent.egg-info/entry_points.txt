@@ -1,2 +1,0 @@
-[console_scripts]
-lrmneagent = frontend.__main__:main
