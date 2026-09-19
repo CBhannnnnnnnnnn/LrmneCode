@@ -11,8 +11,11 @@ from agentscope.model import ChatModelBase
 ThinkingLevel = Literal["off", "low", "medium", "high"]
 _THINKING_LEVELS = frozenset({"off", "low", "medium", "high"})
 
-# 项目根 settings.json；部署时可改为正式配置路径
-_SETTINGS_PATH = Path(__file__).resolve().parents[2] / "settings.json"
+# 用户主目录全局配置：~/.lrmneagent/settings.json（与项目 cwd 下的 .lrmneagent/ 分离）
+_GLOBAL_HOME = Path.home() / ".lrmneagent"
+_SETTINGS_PATH = _GLOBAL_HOME / "settings.json"
+# 开发期曾写在仓库根的旧路径；全局文件不存在时迁一次
+_LEGACY_SETTINGS_PATH = Path(__file__).resolve().parents[2] / "settings.json"
 
 # config.set / get 路由到本模块的 key
 MODEL_CONFIG_KEYS = frozenset(
@@ -23,6 +26,22 @@ MODEL_CONFIG_KEYS = frozenset(
         "context_size",
     },
 )
+
+
+def _ensure_settings_file() -> Path:
+    """返回全局 settings 路径；若仅有仓库根旧文件则复制到用户主目录。"""
+    if _SETTINGS_PATH.is_file():
+        return _SETTINGS_PATH
+    if _LEGACY_SETTINGS_PATH.is_file():
+        try:
+            _GLOBAL_HOME.mkdir(parents=True, exist_ok=True)
+            _SETTINGS_PATH.write_text(
+                _LEGACY_SETTINGS_PATH.read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+        except OSError:
+            pass
+    return _SETTINGS_PATH
 
 
 def _empty_settings() -> dict[str, Any]:
@@ -110,8 +129,8 @@ class ModelConfig:
         self._settings["context_size"] = value
 
     def _load(self) -> None:
-        """从 settings.json 读取；缺文件/缺字段/无效则保持空默认。"""
-        path = _SETTINGS_PATH
+        """从 ~/.lrmneagent/settings.json 读取；缺文件/缺字段/无效则保持空默认。"""
+        path = _ensure_settings_file()
         if not path.is_file():
             return
 
@@ -148,7 +167,7 @@ class ModelConfig:
         self._settings["model"] = model_id.strip()
 
     def _save(self) -> None:
-        """将提供方 / API / 默认模型写回 settings.json（合并其它段）。"""
+        """将提供方 / API / 默认模型写回 ~/.lrmneagent/settings.json（合并其它段）。"""
         path = _SETTINGS_PATH
         data: dict[str, Any] = {}
         if path.is_file():
