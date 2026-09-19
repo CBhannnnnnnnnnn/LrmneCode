@@ -1,0 +1,1 @@
+{"path": "D:\\code\\CodeAgent\\proxy_layer\\session.py", "content": "import contextvars\n\n#单开一条路传递conversation_id 避免在定义handler时出现非业务内容。\nconversation_id_var: contextvars.ContextVar[str] = contextvars.ContextVar(\n    \"conversation_id\", default=\"\",\n)"}
