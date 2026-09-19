@@ -8,7 +8,7 @@ __pycache__/
 .pytest_cache/
 *.pyc
 
-lrmneagent.egg-info/
+*.egg-info/
 
 settings.json
 
