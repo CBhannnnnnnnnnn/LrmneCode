@@ -1,1 +1,0 @@
-{"path": "D:\\code\\CodeAgent\\settings.json", "content": "{\n  \"model\": {\n    \"provider_type\": \"openai_credential\",\n    \"credential\": {\n      \"api_key\": \"2537882a82ea4a55bc95bd38e29bb187.TY11nxif5lF7iHnr\",\n      \"base_url\": \"https://open.bigmodel.cn/api/paas/v4\"\n    },\n    \"model\": \"glm-5.3-flash\"\n  }\n}\n"}

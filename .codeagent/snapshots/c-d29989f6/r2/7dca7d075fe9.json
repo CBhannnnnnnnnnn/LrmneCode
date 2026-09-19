@@ -1,1 +1,0 @@
-{"path": "D:\\code\\CodeAgent\\frontend\\__init__.py", "content": "\"\"\"CodeAgent TUI 前端（Textual）。\n\n入口：在项目根目录运行 ``python -m frontend``。\n\n- 协议：只依赖 ``proxy_layer.schema`` 定义的行协议（command / event / receipt）\n- 后端：以子进程方式拉起 ``proxy_layer.runtime.Runtime``，stdin/stdout 通信\n- 渲染：chat.send 的流式事件 → Markdown / 思考块 / 工具行 / 审批面板\n\"\"\"\n"}

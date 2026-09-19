@@ -1,1 +1,0 @@
-{"path": "D:\\code\\CodeAgent\\backend\\developer\\__init__.py", "content": "from .prompt import NAME, SYSTEM_PROMPT, get_name, get_system_prompt\n\n__all__ = [\n    \"NAME\",\n    \"SYSTEM_PROMPT\",\n    \"get_name\",\n    \"get_system_prompt\",\n]\n"}

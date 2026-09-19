@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import difflib
 import hashlib
@@ -10,7 +10,7 @@ from typing import Any
 
 MAX_ROUNDS = 20  # 每会话最多保留的快照轮次
 SKIP_DIRS = {
-    ".git", ".codeagent", "__pycache__", "node_modules",
+    ".git", ".lrmneagent", "__pycache__", "node_modules",
     ".venv", "venv", ".env", ".idea", ".vscode",
 }
 

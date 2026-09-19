@@ -1,4 +1,4 @@
-"""CodeAgent TUI 主应用。
+﻿"""LrmneAgent TUI 主应用。
 
 职责：
 - 组装界面（聊天流 / 命令面板 / 状态栏 / 输入框）
@@ -73,8 +73,8 @@ class _TextBlock:
     scheduled: bool = False
 
 
-class CodeAgentApp(App):
-    TITLE = "CodeAgent"
+class LrmneAgentApp(App):
+    TITLE = "LrmneAgent"
     SUB_TITLE = "agent tui"
 
     BINDINGS = [
@@ -250,7 +250,7 @@ class CodeAgentApp(App):
         body.append("中断    ", style=COLOR_DIM)
         body.append("Ctrl+Q ", style="bold #565f89")
         body.append("退出", style=COLOR_DIM)
-        self._mount_chat(Card("CodeAgent", body))
+        self._mount_chat(Card("LrmneAgent", body))
 
         self.run_worker(self.client.start(), exclusive=False)
         # 启动即拉取配置，填充状态栏

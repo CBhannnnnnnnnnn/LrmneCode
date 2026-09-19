@@ -1,1 +1,0 @@
-{"path": "D:\\code\\CodeAgent\\frontend\\__main__.py", "content": "\"\"\"入口：在项目根目录运行 ``python -m frontend``。\"\"\"\n\nfrom .app import CodeAgentApp\n\n\ndef main() -> None:\n    CodeAgentApp().run()\n\n\nif __name__ == \"__main__\":\n    main()\n"}

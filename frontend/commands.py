@@ -1,8 +1,8 @@
-"""斜杠命令注册表：一个 /命令 对应一条协议 command（或纯本地动作）。
+﻿"""斜杠命令注册表：一个 /命令 对应一条协议 command（或纯本地动作）。
 
 约定：
 - 以 ``/`` 开头的输入不发给 chat.send，而是先解析成命令；
-- 每个命令的处理器通过传入的 ``app``（CodeAgentApp）发协议命令或做本地展示；
+- 每个命令的处理器通过传入的 ``app``（LrmneAgentApp）发协议命令或做本地展示；
 - 需要参数的命令以空 usage 标记为"可补全但不自动执行"。
 """
 
@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from typing import Callable, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .app import CodeAgentApp
+    from .app import LrmneAgentApp
 
 
 # 普通文本输入走 chat.send；若后端日后改名只改这里
@@ -29,7 +29,7 @@ class SlashCommand:
     description: str
     usage: str = ""
     aliases: tuple[str, ...] = ()
-    handler: Callable[["CodeAgentApp", list[str]], None] | None = None
+    handler: Callable[["LrmneAgentApp", list[str]], None] | None = None
 
 
 COMMANDS: list[SlashCommand] = []
@@ -41,7 +41,7 @@ def command(
     usage: str = "",
     aliases: tuple[str, ...] = (),
 ):
-    def decorator(fn: Callable[["CodeAgentApp", list[str]], None]):
+    def decorator(fn: Callable[["LrmneAgentApp", list[str]], None]):
         COMMANDS.append(SlashCommand(name, description, usage, aliases, fn))
         return fn
 
@@ -79,17 +79,17 @@ def match_prefix(prefix: str) -> list[SlashCommand]:
 
 
 @command("help", "显示所有可用命令", aliases=("?",))
-def cmd_help(app: "CodeAgentApp", args: list[str]) -> None:
+def cmd_help(app: "LrmneAgentApp", args: list[str]) -> None:
     app.show_command_help()
 
 
 @command("clear", "清空显示", aliases=("reset",))
-def cmd_clear(app: "CodeAgentApp", args: list[str]) -> None:
+def cmd_clear(app: "LrmneAgentApp", args: list[str]) -> None:
     app.clear_transcript()
 
 
 @command("interrupt", "中断当前生成", aliases=("stop",))
-def cmd_interrupt(app: "CodeAgentApp", args: list[str]) -> None:
+def cmd_interrupt(app: "LrmneAgentApp", args: list[str]) -> None:
     if not app._chat_inflight:
         app.show_notice("当前没有在途对话可中断", "info")
         return
@@ -100,12 +100,12 @@ def cmd_interrupt(app: "CodeAgentApp", args: list[str]) -> None:
 
 
 @command("new", "开新对话", aliases=("new-chat",))
-def cmd_new(app: "CodeAgentApp", args: list[str]) -> None:
+def cmd_new(app: "LrmneAgentApp", args: list[str]) -> None:
     app.new_conversation()
 
 
-@command("quit", "退出 CodeAgent", aliases=("exit",))
-def cmd_quit(app: "CodeAgentApp", args: list[str]) -> None:
+@command("quit", "退出 LrmneAgent", aliases=("exit",))
+def cmd_quit(app: "LrmneAgentApp", args: list[str]) -> None:
     app.exit()
 
 
@@ -113,7 +113,7 @@ def cmd_quit(app: "CodeAgentApp", args: list[str]) -> None:
 
 
 @command("model", "查看或切换模型", usage="[模型名]")
-def cmd_model(app: "CodeAgentApp", args: list[str]) -> None:
+def cmd_model(app: "LrmneAgentApp", args: list[str]) -> None:
     if args:
         app.send_command(
             "config.set",
@@ -128,7 +128,7 @@ def cmd_model(app: "CodeAgentApp", args: list[str]) -> None:
 
 
 @command("thinking", "查看或设置思考级别", usage="[off|low|medium|high]")
-def cmd_thinking(app: "CodeAgentApp", args: list[str]) -> None:
+def cmd_thinking(app: "LrmneAgentApp", args: list[str]) -> None:
     if args:
         app.send_command(
             "config.set",
@@ -150,7 +150,7 @@ def cmd_thinking(app: "CodeAgentApp", args: list[str]) -> None:
     "查看或设置权限模式",
     usage="[default|accept_edits|explore|bypass|dont_ask]",
 )
-def cmd_permission(app: "CodeAgentApp", args: list[str]) -> None:
+def cmd_permission(app: "LrmneAgentApp", args: list[str]) -> None:
     if args:
         app.send_command(
             "config.set",
@@ -165,7 +165,7 @@ def cmd_permission(app: "CodeAgentApp", args: list[str]) -> None:
 
 
 @command("cwd", "查看或设置工作目录", usage="[路径]")
-def cmd_cwd(app: "CodeAgentApp", args: list[str]) -> None:
+def cmd_cwd(app: "LrmneAgentApp", args: list[str]) -> None:
     if args:
         app.send_command(
             "config.set",
@@ -180,7 +180,7 @@ def cmd_cwd(app: "CodeAgentApp", args: list[str]) -> None:
 
 
 @command("config", "通用配置读写", usage="[key] [value]")
-def cmd_config(app: "CodeAgentApp", args: list[str]) -> None:
+def cmd_config(app: "LrmneAgentApp", args: list[str]) -> None:
     if not args:
         app.send_command("config.get", {}, kind="config", label="config.get")
     elif len(args) == 1:
@@ -202,7 +202,7 @@ def cmd_config(app: "CodeAgentApp", args: list[str]) -> None:
 
 
 @command("status", "查看会话与配置状态", aliases=("info",))
-def cmd_status(app: "CodeAgentApp", args: list[str]) -> None:
+def cmd_status(app: "LrmneAgentApp", args: list[str]) -> None:
     app.show_status_card()
     app.send_command("config.get", {}, kind="config", label="config.get")
 
@@ -211,12 +211,12 @@ def cmd_status(app: "CodeAgentApp", args: list[str]) -> None:
 
 
 @command("sessions", "查看所有历史会话", aliases=("resumelist",))
-def cmd_sessions(app: "CodeAgentApp", args: list[str]) -> None:
+def cmd_sessions(app: "LrmneAgentApp", args: list[str]) -> None:
     app.send_command("session.list", {}, kind="session", label="session.list")
 
 
 @command("resume", "恢复指定历史会话", usage="<cid>")
-def cmd_resume(app: "CodeAgentApp", args: list[str]) -> None:
+def cmd_resume(app: "LrmneAgentApp", args: list[str]) -> None:
     if not args:
         app.show_notice("用法：/resume <cid>，先用 /sessions 查看会话列表", "warn")
         return
@@ -229,7 +229,7 @@ def cmd_resume(app: "CodeAgentApp", args: list[str]) -> None:
 
 
 @command("delete", "删除指定历史会话", usage="<cid>", aliases=("rm",))
-def cmd_delete(app: "CodeAgentApp", args: list[str]) -> None:
+def cmd_delete(app: "LrmneAgentApp", args: list[str]) -> None:
     if not args:
         app.show_notice("用法：/delete <cid>，先用 /sessions 查看会话列表", "warn")
         return
@@ -245,7 +245,7 @@ def cmd_delete(app: "CodeAgentApp", args: list[str]) -> None:
 
 
 @command("attach", "附加文件到下一条消息", usage="<文件路径>")
-def cmd_attach(app: "CodeAgentApp", args: list[str]) -> None:
+def cmd_attach(app: "LrmneAgentApp", args: list[str]) -> None:
     if not args:
         app.show_notice("用法：/attach <文件路径>", "warn")
         return
@@ -272,7 +272,7 @@ def cmd_attach(app: "CodeAgentApp", args: list[str]) -> None:
 
 
 @command("attachments", "查看待发送附件", aliases=("attlist",))
-def cmd_attachments(app: "CodeAgentApp", args: list[str]) -> None:
+def cmd_attachments(app: "LrmneAgentApp", args: list[str]) -> None:
     atts = app.pending_attachments
     if not atts:
         app.show_notice("暂无待发送附件", "info")
@@ -285,12 +285,12 @@ def cmd_attachments(app: "CodeAgentApp", args: list[str]) -> None:
 
 
 @command("skills", "查看可用 skills")
-def cmd_skills(app: "CodeAgentApp", args: list[str]) -> None:
+def cmd_skills(app: "LrmneAgentApp", args: list[str]) -> None:
     app.send_command("skill.list", {}, kind="skill-list", label="skill.list")
 
 
 @command("use-skill", "使用指定 skill", usage="<名称或编号>")
-def cmd_use_skill(app: "CodeAgentApp", args: list[str]) -> None:
+def cmd_use_skill(app: "LrmneAgentApp", args: list[str]) -> None:
     if not args:
         app.show_notice("用法：/use-skill <名称或编号>，先用 /skills 查看列表", "warn")
         return
@@ -310,7 +310,7 @@ def cmd_use_skill(app: "CodeAgentApp", args: list[str]) -> None:
 
 
 @command("mcp", "查看已连接的 MCP 服务器")
-def cmd_mcp(app: "CodeAgentApp", args: list[str]) -> None:
+def cmd_mcp(app: "LrmneAgentApp", args: list[str]) -> None:
     app.send_command("mcp.list", {}, kind="mcp-list", label="mcp.list")
 
 
@@ -318,12 +318,12 @@ def cmd_mcp(app: "CodeAgentApp", args: list[str]) -> None:
 
 
 @command("diff", "查看本轮文件改动", usage="[round]")
-def cmd_diff(app: "CodeAgentApp", args: list[str]) -> None:
+def cmd_diff(app: "LrmneAgentApp", args: list[str]) -> None:
     params = {"round": int(args[0])} if args else {}
     app.send_command("diff.show", params, kind="diff", label="diff.show")
 
 
 @command("undo", "撤销指定轮次的文件修改", usage="[round]")
-def cmd_undo(app: "CodeAgentApp", args: list[str]) -> None:
+def cmd_undo(app: "LrmneAgentApp", args: list[str]) -> None:
     params = {"round": int(args[0])} if args else {}
     app.send_command("diff.undo", params, kind="undo", label="diff.undo")

@@ -1,4 +1,4 @@
-"""开发者侧 Agent 名称与系统提示词。
+﻿"""开发者侧 Agent 名称与系统提示词。
 
 仅提供字符串；工作区说明由 ``offloader=LocalWorkspace`` 时框架另行拼接。
 中间件对提示词的改写不在本模块。
@@ -6,10 +6,10 @@
 
 from __future__ import annotations
 
-NAME = "CodeAgent"
+NAME = "LrmneAgent"
 
 SYSTEM_PROMPT = """\
-You are CodeAgent, a coding assistant that works inside the user's project workspace.
+You are LrmneAgent, a coding assistant that works inside the user's project workspace.
 
 ## Goals
 - Help the user understand, modify, and run code in the current workspace.

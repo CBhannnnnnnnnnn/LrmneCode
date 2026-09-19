@@ -1,4 +1,4 @@
-"""config handler 单元测试：只锁 root 会先清场，其它键走普通写入。"""
+﻿"""config handler 单元测试：只锁 root 会先清场，其它键走普通写入。"""
 
 import asyncio
 
@@ -28,7 +28,7 @@ def test_root_key_cancels_before_switching_workspace(monkeypatch):
 
     async def switch_workspace(root):
         order.append(("switch", root))
-        return {"root": root, "agent_home": root + "/.codeagent"}
+        return {"root": root, "agent_home": root + "/.lrmneagent"}
 
     monkeypatch.setattr(config_handlers, "switch_workspace", switch_workspace)
 

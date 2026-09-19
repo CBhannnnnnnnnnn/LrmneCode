@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 import os
@@ -13,12 +13,12 @@ from agentscope.workspace import LocalWorkspace, WorkspaceBase
 from agentscope.agent import Agent
 
 
-AGENT_HOME_NAME = ".codeagent"
+AGENT_HOME_NAME = ".lrmneagent"
 SESSIONS_DIR = "sessions"
 
 
 class ProjectLocalWorkspace(LocalWorkspace):
-    """workdir 落在 .codeagent；工具 cwd 绑到项目源码根，而非 agent home。"""
+    """workdir 落在 .lrmneagent；工具 cwd 绑到项目源码根，而非 agent home。"""
 
     def __init__(self, project_root: str, **kwargs: Any):
 
