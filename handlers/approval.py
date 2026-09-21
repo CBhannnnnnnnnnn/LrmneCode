@@ -6,10 +6,11 @@ from pydantic import BaseModel
 class ApprovalRespondParams(BaseModel):
     approval_request_id: str
     approved: bool
+    always: bool = False
 
 
 @approval_register("respond")
 async def approval_respond(params: ApprovalRespondParams):
-    """解挂 chat.send 中等待的工具审批。"""
+    """解挂 chat.send 中等待的工具审批；``always`` 一并记住这类放行。"""
     return respond_approval(params.approval_request_id, 
-                        params.approved)
+                        params.approved, params.always)

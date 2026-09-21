@@ -3,7 +3,11 @@ from __future__ import annotations
 import asyncio
 from typing import Any, AsyncIterator
 
-from agentscope.event import RequireUserConfirmEvent, UserConfirmResultEvent
+from agentscope.event import (
+    ModelCallEndEvent,
+    RequireUserConfirmEvent,
+    UserConfirmResultEvent,
+)
 from agentscope.message import UserMsg, TextBlock, DataBlock, Base64Source
 from agentscope.state import AgentState
 
@@ -12,6 +16,7 @@ from backend.snapshot import SnapshotManager
 from proxy_layer.session import conversation_id_var
 
 from . import _state
+from .context import usage_breakdown
 from .translate import translate
 
 
@@ -53,11 +58,24 @@ async def stream_chat(text: str, attachments: list[dict] | None = None) -> Async
             )
         inputs: Any = UserMsg(name="user", content=blocks)
 
+        # 引擎在每次推理前自行判断要不要压缩上下文，压缩本身不产事件（只写日志），
+        # 但它会把 state.context 换成保留的那几条、把其余归纳进 state.summary。
+        # 上下文条数只会随对话增长，变短就只可能是压缩发生了——据此补一条通知。
+        watched = len(agent.state.context)
+
         while True:
 
             pending: RequireUserConfirmEvent | None = None
 
             async for event in agent.reply_stream(inputs):
+
+                count = len(agent.state.context)
+                if count < watched:
+                    yield {
+                        "event": "context.compressed",
+                        "data": {"before": watched, "after": count},
+                    }
+                watched = count
 
                 if isinstance(event, RequireUserConfirmEvent):
                     pending = event
@@ -73,6 +91,9 @@ async def stream_chat(text: str, attachments: list[dict] | None = None) -> Async
 
                 # None：该事件不透传；要支持需扩展 translate
                 if wire is not None:
+                    if isinstance(event, ModelCallEndEvent):
+                        # 上下文构成跟着用量一起走：前端浮窗要的是「这次调用」的占比
+                        wire["data"]["context"] = await usage_breakdown(agent)
                     yield wire
 
 

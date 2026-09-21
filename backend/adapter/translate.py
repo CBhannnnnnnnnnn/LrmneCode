@@ -29,6 +29,11 @@ from agentscope.event import (
 
 from ._dump import _dump
 
+# 结果文本在转录里只用作预览行（前端只保留尾部 4000 字），整块几 MB 的输出
+# （Glob 全仓匹配之类）不该原样变成**一行**协议消息：既灌满管道，也把对端
+# readline 逼向流上限。只发尾部，预览行拿到的正是它要的那一段。
+_RESULT_DELTA_TAIL = 64000
+
 
 def translate(event: Any) -> dict[str, Any] | None:
     """AgentScope 事件 → {event, data}；入站/未知类型返回 None。"""
@@ -222,7 +227,7 @@ def translate(event: Any) -> dict[str, Any] | None:
             "data": {
                 "reply_id": event.reply_id,
                 "tool_call_id": event.tool_call_id,
-                "text_delta": event.delta,
+                "text_delta": event.delta[-_RESULT_DELTA_TAIL:],
             },
         }
 

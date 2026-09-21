@@ -1,24 +1,29 @@
-﻿"""LrmneAgent TUI 主应用。
+"""LrmneAgent TUI 主应用：组装界面、生命周期、路由与键位。
 
-职责：
-- 组装界面（聊天流 / 命令面板 / 状态栏 / 输入框）
-- 把后端事件渲染成聊天流（文本 / 思考 / 工具 / 审批）
-- 把用户输入（普通文本 或 /命令）映射为协议命令
+分层（与后端 register / handlers / adapter 的分工对称）：
+- ``client``       后端子进程与 stdio 行协议
+- ``registry``     operation / event 两张分发表
+- ``events``       事件渲染器（导入即注册）
+- ``results``      成功回执的结果渲染器（导入即注册）
+- ``conversation`` 按 cid 的会话状态与聊天流
+- ``commands``     斜杠命令 → operation
+- ``widgets``      通用部件
+- ``theme``        视觉 token
+
+本模块只做四件事：组装、键位与焦点、协议收发、按 cid 路由与会话切换。
 """
 
 from __future__ import annotations
 
-import functools
-import json
-from dataclasses import dataclass
-from typing import Any
+import os
+from typing import Any, Callable
 
 from rich.text import Text
 from textual import on
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import VerticalScroll
-from textual.widgets import Footer, Header
+from textual.containers import Container, Horizontal
+from textual.widgets import Footer, Header, OptionList
 
 from proxy_layer.schema import (
     PROTOCOL_VERSION,
@@ -29,184 +34,362 @@ from proxy_layer.schema import (
     new_request_id,
 )
 
+from . import events as _events  # noqa: F401  导入即注册事件渲染器
+from . import mentions
+from . import results as _results  # noqa: F401  导入即注册结果渲染器
 from .client import BackendClient
-from .commands import OP_CHAT_SEND, find, match_prefix, parse
+from .commands import OP_CHAT_SEND, SlashCommand, find, match_prefix, parse
+from .conversation import Conversation, ConversationStore, PendingCommand
+from .mentions import Mention
+from .overlay import (
+    Choice,
+    ModelConfigOverlay,
+    Overlay,
+    Picker,
+    Prompt,
+    SessionSwitcherOverlay,
+)
+from .registry import lookup_event, lookup_operation
+from .theme import (
+    GLYPH_USER,
+    GRAPHITE,
+    S_FAINT,
+    S_TEXT,
+    S_TOOL,
+    S_WARN,
+)
 from .widgets import (
-    COLOR_ACCENT,
-    COLOR_DIM,
-    COLOR_ERR,
-    COLOR_OK,
-    COLOR_TOOL,
-    COLOR_USER,
-    COLOR_WARN,
     ApprovalPanel,
     Card,
-    CommandPalette,
-    HintBlock,
+    InlinePalette,
     InputArea,
     NoticeLine,
+    SidePanel,
     StatusBar,
-    StreamMarkdown,
-    ThinkingBlock,
-    ToolCallView,
     UserMessage,
 )
 
-
-@dataclass
-class PendingCommand:
-    """已发出、等待回执的命令。"""
-
-    request_id: str
-    operation: str
-    label: str
-    kind: str  # chat | config | session | approval | diff | undo | other
-
-
-@dataclass
-class _TextBlock:
-    """流式文本块：Markdown 组件 + 待刷新缓冲。"""
-
-    key: str
-    markdown: Markdown
-    buffer: str = ""
-    scheduled: bool = False
+# 流式文本的合并刷新间隔：把高频 delta 攒成低频整块写入
+STREAM_FLUSH_INTERVAL = 0.08
 
 
 class LrmneAgentApp(App):
     TITLE = "LrmneAgent"
-    SUB_TITLE = "agent tui"
+    SUB_TITLE = "coding agent"
 
     BINDINGS = [
-        Binding("escape", "escape", "中断/关闭", priority=True),
+        # 不设 priority：让浮窗的 priority Esc 先于此处生效（浮窗要独占 Esc）
+        Binding("escape", "escape", "暂停/关闭"),
+        Binding("f2", "model_config", "模型配置"),
+        Binding("f3", "sessions", "会话"),
         Binding("ctrl+q", "quit", "退出", priority=True),
     ]
 
     CSS = """
     Screen {
-        background: #16161e;
-        color: #c0caf5;
+        background: $background;
+        color: $text;
     }
-    Header { background: #16161e; }
-    Footer { background: #1f2335; }
-    #chat {
+    Header {
+        background: $background;
+        color: $text;
+    }
+    Footer {
+        background: $surface;
+        color: $text-dim;
+    }
+    #main-row {
         height: 1fr;
-        padding: 0 1;
-        scrollbar-background: #16161e;
-        scrollbar-color: #2a2e42;
-        scrollbar-size-horizontal: 1;
+    }
+    #chat-area {
+        width: 1fr;
+        height: 1fr;
+    }
+    /* 右侧栏：与底部状态栏同一档底色，读起来是同一层"边框外的 chrome"。
+       三类信息各占一个小框，类别名写在框上；宽度按最长的一行（目录 + 会话号）
+       留够，不做省略。配置框钉在底部：上面两框会随上下文分段数长高，窗口不够高
+       时该长高的自己滚，不能把不常变的档位挤出可视区。 */
+    #side {
+        width: 34;
+        height: 1fr;
+        background: $surface;
+        padding: 1 1 0 1;
+    }
+    #side-scroll {
+        height: 1fr;
         scrollbar-size-vertical: 1;
+        scrollbar-background: $surface;
+        scrollbar-color: $border;
     }
-    .user-message { margin: 1 0 0 0; }
-    .notice { margin: 0; }
-    .assistant-text { margin: 0; }
-    .thinking, .hint { margin: 0; }
-    .thinking CollapsibleTitle, .hint CollapsibleTitle {
-        color: #565f89;
-    }
-    .thinking-body, .hint-body {
-        color: #565f89;
-        text-style: italic;
-    }
-    .tool-call {
+    .side-box {
+        width: 100%;
         height: auto;
+        border: round $border;
+        background: $surface;
+        padding: 0 1;
+        margin: 0 0 1 0;
+        color: $text-dim;
+        text-wrap: nowrap;
+        text-overflow: ellipsis;
+        border-title-color: $text-dim;
+        border-title-align: left;
+    }
+    #side-config {
+        dock: bottom;
+    }
+    ChatView {
+        height: 1fr;
+        padding: 0 2;
+        scrollbar-size-vertical: 1;
+        scrollbar-size-horizontal: 1;
+        scrollbar-background: $background;
+        scrollbar-color: $border;
+    }
+    .user-message {
+        margin: 1 0 0 0;
+    }
+    .notice {
         margin: 0;
     }
-    .tool-status { margin: 0; }
-    .tool-result, .tool-result-full {
-        color: #565f89;
+    /* 转录区的「一块」：左上标题写这是什么，右下状态写进行到哪。边框只有状态语义色
+       会变，其余一律最弱一档灰——转录里的亮度应该来自正文，而不是容器。
+       标题本身走「次要」那一档（$text-dim）：它是块的名字，太浅就读不出结构，
+       提到正文那一档又会跟正文抢注意力。 */
+    .block {
+        height: auto;
+        border: round $border;
+        background: $surface;
+        padding: 0 1;
+        margin: 1 0;
+        border-title-color: $text-dim;
+        border-title-align: left;
+        border-subtitle-align: right;
+        border-subtitle-color: $text-faint;
+    }
+    .block.state-running {
+        border-subtitle-color: $warn;
+    }
+    .block.state-ok {
+        border-subtitle-color: $ok;
+    }
+    .block.state-err {
+        border-subtitle-color: $err;
+    }
+    .block.state-warn {
+        border-subtitle-color: $warn;
+    }
+    /* 分类型描边：一眼看出这块是助手、工具还是思考，色相只到「分得出来」为止。
+       审批单独一档最暖的陶土——它是唯一要用户表态的块。 */
+    .assistant-block {
+        border: round $tint-assistant;
+    }
+    .tool-call {
+        border: round $tint-tool;
+    }
+    .thinking {
+        border: round $tint-thinking;
+    }
+    .tool-detail {
+        margin: 0;
+        color: $text-dim;
+        text-wrap: nowrap;
+        text-overflow: ellipsis;
+    }
+    .assistant-text {
+        margin: 0;
+    }
+    .thinking-body {
+        color: $text-faint;
+        text-style: italic;
+    }
+    /* 系统提示：一行弱标记，正文（运行时上下文）不进转录 */
+    .hint {
+        margin: 0;
+    }
+    /* 块内的折叠块（思考正文 / 改动正文 / 命令输出）：块本身已经画了边框，
+       里层不能再铺一层 hkey 顶线与底色，否则一个块里又套出一个格子。 */
+    .block CollapsibleTitle,
+    .diff-fold CollapsibleTitle,
+    .result-fold CollapsibleTitle {
+        padding: 0;
+        background: transparent;
+        text-style: none;
+        color: $text-faint;
+    }
+    /* 只有用户落到这一行（hover 或点开）才提亮。CollapsibleTitle 默认在 hover/focus
+       时铺一块主题色实心底（石墨主题下是浅灰块），点一下标题就跳出一大块亮色，抹掉。 */
+    .block CollapsibleTitle:hover,
+    .block CollapsibleTitle:focus,
+    .diff-fold CollapsibleTitle:hover,
+    .diff-fold CollapsibleTitle:focus,
+    .result-fold CollapsibleTitle:hover,
+    .result-fold CollapsibleTitle:focus {
+        background: transparent;
+        color: $text-dim;
+    }
+    .block Collapsible Contents {
+        padding: 0;
+        background: transparent;
+    }
+    .diff-fold,
+    .result-fold {
+        padding: 0 0 0 2;
+        margin: 0;
+        border: none;
+        background: transparent;
+    }
+    .diff-fold Contents,
+    .result-fold Contents {
+        padding: 0 0 0 2;
+        background: transparent;
+    }
+    .diff-body {
+        color: $text-dim;
+    }
+    .tool-result {
+        color: $text-faint;
+        padding-left: 2;
+        margin: 0;
+    }
+    .tool-result-full {
+        color: $text-dim;
         margin: 0;
     }
     .card {
-        border: round #2a2e42;
-        background: #1a1b26;
+        border: round $border;
+        background: $surface;
         padding: 0 1;
         margin: 1 0;
-        border-title-color: #bb9af7;
+        border-title-color: $text-dim;
         border-title-align: left;
     }
     .approval-panel {
         height: auto;
-        border: round #e0af68;
-        background: #1f2335;
+        border: round $tint-approval;
+        background: $surface;
         padding: 0 1;
         margin: 1 0;
-        border-title-color: #e0af68;
+        border-title-color: $warn;
         border-title-align: left;
     }
     .approval-panel.resolved {
-        border: round #2a2e42;
+        border: round $border;
         opacity: 0.55;
     }
-    .approval-title { margin: 0; }
-    .approval-item { margin: 0; }
+    .approval-item {
+        margin: 0;
+        text-wrap: nowrap;
+        text-overflow: ellipsis;
+    }
+    /* 扁平文字按钮：不画边框不填色，只在悬停/聚焦时抬一层底色 */
     .approval-buttons {
         height: auto;
         margin: 1 0 0 0;
     }
-    .approval-buttons Button { margin-right: 1; min-width: 12; }
+    .approval-buttons Button {
+        margin-right: 1;
+        min-width: 0;
+        height: 1;
+        padding: 0 1;
+        border: none;
+        background: $surface;
+        color: $text-dim;
+    }
+    .approval-buttons Button:hover,
+    .approval-buttons Button:focus {
+        background: $surface-alt;
+        color: $text;
+    }
     #palette {
         height: auto;
         max-height: 12;
         margin: 0 1;
-        border: round #2a2e42;
-        background: #1a1b26;
+        border: round $border-strong;
+        background: $surface;
         scrollbar-size-vertical: 1;
+        border-title-color: $text-faint;
+        border-title-align: left;
+        border-subtitle-align: right;
+        border-subtitle-color: $text-faint;
     }
-    #status { height: 1; background: #1f2335; padding: 0 1; }
-    .status-left { width: 1fr; color: #9aa5ce; }
-    .status-right { width: auto; color: #565f89; }
+    /* 当前项：抬一层底色 + 提亮文字，而不是 Textual 默认的实心亮灰块。
+       $surface-alt 在石墨底上还是偏沉，用边框那一档灰才看得出光标在哪一行。 */
+    #palette > .option-list--option-highlighted {
+        background: $border-strong;
+        color: $text;
+        text-style: bold;
+    }
+    #status {
+        height: 1;
+        background: $surface;
+        padding: 0 1;
+    }
+    .status-left {
+        width: 1fr;
+        color: $text-dim;
+        text-wrap: nowrap;
+        text-overflow: ellipsis;
+    }
     #input {
         height: 5;
-        border: round #2a2e42;
-        background: #16161e;
+        border: round $border;
+        background: $surface;
         padding: 0 1;
         scrollbar-size-vertical: 1;
     }
-    #input:focus { border: round #7aa2f7; }
+    #input:focus {
+        border: round $border-focus;
+    }
     """
 
     def __init__(self) -> None:
         super().__init__()
-        self.theme = "textual-dark"
-        self.conversation_id = new_conversation_id()
+        # 主题必须在 App.CSS 被解析之前注册：本文件的 CSS 直接引用 GRAPHITE
+        # 暴露的 $text-dim / $surface-sunk 等自定义变量，晚一步就会解析失败。
+        self.register_theme(GRAPHITE)
+        self.theme = GRAPHITE.name
+        self.store = ConversationStore()
         self.client = BackendClient(
             on_event=self._dispatch_event,
             on_receipt=self._dispatch_receipt,
             on_exit=self._dispatch_exit,
         )
-        # 回执等待表 & 在途 chat 命令
-        self._pending: dict[str, PendingCommand] = {}
-        self._chat_inflight: set[str] = set()
-        # 渲染状态（按事件键索引）
-        self._text_blocks: dict[str, _TextBlock] = {}
-        self._thinking: dict[str, ThinkingBlock] = {}
-        self._tools: dict[str, ToolCallView] = {}
-        self._approvals: dict[str, ApprovalPanel] = {}
-        self._data_blocks: dict[str, dict] = {}  # block_id → {media_type, buffer}
-        self._pending_attachments: list[dict] = []  # 待发送附件
-        self._cached_skills: list[dict] = []  # skill.list 缓存，供 /use-skill 编号查找
-        self._cached_mcp: list[dict] = []  # mcp.list 缓存
-        # 缓存的组件引用（on_mount 填充）
-        self._chat: VerticalScroll | None = None
-        self._palette: CommandPalette | None = None
+        # 最近一次 config.* 回执的扁平值：选择卡片据此标出当前项
+        self.config: dict[str, Any] = {}
+        # 待用的配置确认语：由 set_config_value 写入，回执渲染时取走
+        self._pending_set = ""
+        # /status 主动要一张配置卡片：启动时的静默 config.get 不该在转录里出内容
+        self._pending_status = False
+        # @ 提及的候选：文件按工作目录缓存一次，skill 列表由后端回执填
+        self._files_cache: tuple[str, list[Mention]] | None = None
+        self.skills: list[Mention] = []
+        self._skills_pending = False
+        self._chat_area: Container | None = None
+        self._side: SidePanel | None = None
+        self._palette: InlinePalette | None = None
         self._status: StatusBar | None = None
         self._input: InputArea | None = None
 
     # ---------- 组件快捷访问 ----------
 
     @property
-    def chat_log(self) -> VerticalScroll:
-        assert self._chat is not None
-        return self._chat
+    def chat_area(self) -> Container:
+        assert self._chat_area is not None
+        return self._chat_area
 
     @property
-    def palette(self) -> CommandPalette:
+    def side(self) -> SidePanel:
+        """右侧栏：底部那一行放不下的量化信息都归它。"""
+        assert self._side is not None
+        return self._side
+
+    @property
+    def palette(self) -> InlinePalette:
         assert self._palette is not None
         return self._palette
 
     @property
-    def status_bar(self) -> StatusBar:
+    def status(self) -> StatusBar:
         assert self._status is not None
         return self._status
 
@@ -215,245 +398,229 @@ class LrmneAgentApp(App):
         assert self._input is not None
         return self._input
 
-    # ---------- 组装 ----------
+    @property
+    def active_overlay(self) -> Overlay | None:
+        """当前压在最上层的浮窗；没有则为 None。"""
+        try:
+            screen = self.screen
+        except Exception:
+            return None
+        return screen if isinstance(screen, Overlay) else None
+
+    @property
+    def model_config_overlay(self) -> ModelConfigOverlay | None:
+        """模型配置浮窗是否在前台；结果渲染器据此决定回执交给谁。"""
+        overlay = self.active_overlay
+        return overlay if isinstance(overlay, ModelConfigOverlay) else None
+
+    @property
+    def session_overlay(self) -> SessionSwitcherOverlay | None:
+        """会话切换浮窗是否在前台。"""
+        overlay = self.active_overlay
+        return overlay if isinstance(overlay, SessionSwitcherOverlay) else None
+
+    @property
+    def picker_overlay(self) -> Picker | None:
+        """前台的选择浮窗；回执渲染器据此把列表投给它。"""
+        overlay = self.active_overlay
+        return overlay if isinstance(overlay, Picker) else None
+
+    # ---------- 配置缓存 ----------
+
+    def remember_config(self, flat: dict[str, Any]) -> None:
+        """记下 config.* 回执里的最新值，供各浮窗标出「当前是哪一项」。"""
+        self.config.update({key: value for key, value in flat.items() if value is not None})
+
+    def set_config_value(self, key: str, value: Any, confirmation: str) -> None:
+        """写入单个配置项。
+
+        ``confirmation`` 是一句用户语言的结果描述（"思考级别已设为 high"）：
+        后端回执会带上整个配置块，那不是用户该看的东西，由发起方提供这一句，
+        由 :meth:`consume_pending_set` 在回执渲染时取走。
+        """
+        self._pending_set = confirmation
+        self.send("config.set", {"key": key, "value": value})
+
+    def consume_pending_set(self) -> str:
+        """取走待用的配置确认语（读一次即清）。"""
+        confirmation, self._pending_set = self._pending_set, ""
+        return confirmation
+
+    def request_status_card(self) -> None:
+        """请求在 config.get 回执到达时渲染一张配置卡片（/status 用）。"""
+        self._pending_status = True
+
+    def consume_status_card(self) -> bool:
+        requested, self._pending_status = self._pending_status, False
+        return requested
+
+    @property
+    def thinking_level(self) -> str:
+        return str(self.config.get("thinking_level") or "")
+
+    @property
+    def permission_mode(self) -> str:
+        return str(self.config.get("mode") or "")
+
+    @property
+    def workspace_root(self) -> str:
+        return str(self.config.get("root") or "")
+
+    # ---------- 组装与生命周期 ----------
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=False)
-        yield VerticalScroll(id="chat")
-        yield CommandPalette(id="palette")
+        yield Horizontal(
+            Container(id="chat-area"),
+            SidePanel(id="side"),
+            id="main-row",
+        )
+        yield InlinePalette(id="palette")
         yield StatusBar(id="status")
         yield InputArea(
             id="input",
-            placeholder="发送消息，/ 呼出命令，Esc 中断",
+            placeholder="发送消息，/ 呼出命令，@ 引用文件，Esc 暂停",
         )
         yield Footer()
 
     def on_mount(self) -> None:
-        self._chat = self.query_one("#chat", VerticalScroll)
-        self._palette = self.query_one("#palette", CommandPalette)
+        self._chat_area = self.query_one("#chat-area", Container)
+        self._side = self.query_one("#side", SidePanel)
+        self._palette = self.query_one("#palette", InlinePalette)
         self._status = self.query_one("#status", StatusBar)
         self._input = self.query_one("#input", InputArea)
 
-        self.status_bar.set_conversation(self.conversation_id)
-        self.input_area.focus()
-
-        body = Text()
-        body.append(
-            f"protocol {PROTOCOL_VERSION} · conversation {self.conversation_id}\n",
-            style=COLOR_DIM,
-        )
-        body.append("❯ ", style=f"bold {COLOR_USER}")
-        body.append("输入消息开始对话\n", style="#c0caf5")
-        body.append("/ ", style=f"bold {COLOR_TOOL}")
-        body.append("呼出命令    ", style=COLOR_DIM)
-        body.append("Esc ", style=f"bold {COLOR_WARN}")
-        body.append("中断    ", style=COLOR_DIM)
-        body.append("Ctrl+Q ", style="bold #565f89")
-        body.append("退出", style=COLOR_DIM)
-        self._mount_chat(Card("LrmneAgent", body))
-
+        self.open_conversation(new_conversation_id(), welcome=True)
+        self.set_interval(STREAM_FLUSH_INTERVAL, self._flush_streams)
         self.run_worker(self.client.start(), exclusive=False)
-        # 启动即拉取配置，填充状态栏
-        self.send_command("config.get", {}, kind="config", label="config.get")
+        # 启动即拉配置，填充状态栏
+        self.send("config.get", {})
 
     async def _on_exit_app(self) -> None:
         await self.client.stop()
 
-    # ---------- 对外动作（commands.py 调用） ----------
+    # ---------- 会话 ----------
 
-    def send_command(
+    def open_conversation(self, cid: str, *, welcome: bool = False) -> Conversation:
+        """取得或新建会话，并切到前台。"""
+        conv = self.store.get(cid) or self.store.create(cid)
+        if conv.view.parent is None:
+            self.chat_area.mount(conv.view)
+        if welcome:
+            self._mount_welcome(conv)
+        self.activate(cid)
+        return conv
+
+    def activate(self, cid: str) -> None:
+        """切换前台会话：置换显示、交接草稿、刷新状态栏。"""
+        previous = self.store.get(self.store.current_cid)
+        if previous is not None and previous.cid != cid:
+            previous.draft = self.input_area.text
+        conv = self.store.switch(cid)
+        for item in self.store.all():
+            item.view.display = item.cid == cid
+        self.input_area.set_text(conv.draft)
+        # 浮窗在前台时别抢焦点：会话切换浮窗自己还要继续用键盘
+        if self.active_overlay is None:
+            self.input_area.focus()
+        self.refresh_status()
+
+    def switch_conversation(self, cid: str) -> bool:
+        """切到本进程已打开的会话；未打开则提示并返回 False。"""
+        if self.store.get(cid) is None:
+            self.notify_line(f"会话 {cid} 未在本进程打开", "warn")
+            return False
+        self.activate(cid)
+        return True
+
+    def resume_conversation(self, source_cid: str) -> Conversation:
+        """把磁盘存档读进一个**新**会话。
+
+        后端 ``session.resume`` 固定写到当前 cid（协议既成事实），所以先开一个空会话
+        再在它上面恢复：既不覆盖用户正开着的会话，恢复后的对话也有自己的 cid。
+        """
+        conv = self.open_conversation(new_conversation_id())
+        self.notify_line(f"正在载入存档 {source_cid}…", "info", conv=conv)
+        self.send("session.resume", {"source_cid": source_cid}, conv=conv)
+        return conv
+
+    def delete_session(self, cid: str) -> None:
+        """删除磁盘存档（会话切换浮窗的 d 键）。"""
+        self.send("session.delete", {"cid": cid})
+
+    def close_conversation(self, cid: str) -> None:
+        """关闭会话；关掉最后一个时自动补一个新的，保证前台始终存在。"""
+        self.store.close(cid)
+        if not self.store.all():
+            self.open_conversation(new_conversation_id(), welcome=True)
+        elif self.store.current_cid != cid:
+            self.activate(self.store.current_cid)
+
+    def refresh_status(self) -> None:
+        """把当前会话的运行态同步到状态栏与右侧栏。
+
+        两个部件的分工只有一处判据：一眼要看到的留底部，其余进右侧栏。
+        """
+        conv = self.store.current
+        self.status.set_state(conv.run_state)
+        self.status.set_model(conv.model)
+        self.status.set_approvals(len(conv.approvals))
+        self.status.set_usage(
+            conv.context_tokens, conv.cache_tokens, conv.cache_created
+        )
+        self.side.set_usage(
+            conv.tokens_in,
+            conv.tokens_out,
+            conv.context_tokens,
+            conv.cache_tokens,
+            conv.cache_created,
+            conv.gen_seconds,
+        )
+        self.side.set_context(conv.context_usage)
+        self.side.set_conversation(conv.cid)
+
+    def apply_config(self, flat: dict[str, Any]) -> None:
+        """config.* 回执落到两个部件：底部取压力表口径，右侧栏取档位与工作区。"""
+        self.status.apply_config(flat)
+        self.side.apply_config(flat)
+
+    # ---------- 协议收发 ----------
+
+    def send(
         self,
         operation: str,
-        parameters: dict[str, Any],
+        parameters: dict[str, Any] | None = None,
         *,
-        kind: str = "other",
-        label: str = "",
+        conv: Conversation | None = None,
     ) -> str:
-        """发送一条协议命令并登记回执等待。"""
+        """按 operation 名发一条协议命令，并登记回执等待。"""
+        target = conv or self.store.current
+        spec = lookup_operation(operation)
         request_id = new_request_id()
-        command = make_command(request_id, self.conversation_id, operation, parameters)
-        self._pending[request_id] = PendingCommand(
-            request_id, operation, label or operation, kind
+        target.pending[request_id] = PendingCommand(
+            request_id,
+            operation,
+            spec.label if spec is not None else operation,
         )
-        if kind == "chat":
-            self._chat_inflight.add(request_id)
-            self.status_bar.set_state("working")
+        if spec is not None and spec.stream:
+            target.inflight.add(request_id)
         try:
-            self.client.send(command)
+            self.client.send(
+                make_command(request_id, target.cid, operation, parameters or {}),
+            )
         except RuntimeError as exc:
-            self._pending.pop(request_id, None)
-            self._chat_inflight.discard(request_id)
-            self.show_notice(f"发送失败：{exc}", "error")
-            self.status_bar.set_state("idle")
+            target.pending.pop(request_id, None)
+            target.inflight.discard(request_id)
+            self.notify_line(f"发送失败：{exc}", "error", conv=target)
+        self.refresh_status()
         return request_id
 
-    def show_notice(self, text: str, kind: str = "info") -> None:
-        self._mount_chat(NoticeLine(text, kind))
+    def notify_line(
+        self, text: str, kind: str = "info", *, conv: Conversation | None = None
+    ) -> None:
+        (conv or self.store.current).view.add(NoticeLine(text, kind))
 
-    def show_command_help(self) -> None:
-        from .commands import COMMANDS
-
-        body = Text()
-        for cmd in COMMANDS:
-            body.append(f"/{cmd.name}", style=f"bold {COLOR_TOOL}")
-            if cmd.usage:
-                body.append(f" {cmd.usage}", style=COLOR_ACCENT)
-            if cmd.aliases:
-                body.append(f" (/{' /'.join(cmd.aliases)})", style=COLOR_DIM)
-            body.append(f" — {cmd.description}\n", style=COLOR_DIM)
-        self._mount_chat(Card("命令", body))
-
-    def show_status_card(self) -> None:
-        body = Text()
-        body.append("protocol", style=f"bold {COLOR_TOOL}")
-        body.append(f" {PROTOCOL_VERSION}\n", style="#c0caf5")
-        body.append("conversation", style=f"bold {COLOR_TOOL}")
-        body.append(f" {self.conversation_id}\n", style="#c0caf5")
-        body.append("在途 chat 命令", style=f"bold {COLOR_TOOL}")
-        body.append(f" {len(self._chat_inflight)}\n", style="#c0caf5")
-        body.append("待处理审批", style=f"bold {COLOR_TOOL}")
-        body.append(f" {len(self._approvals)}", style="#c0caf5")
-        self._mount_chat(Card("状态", body))
-
-    def clear_transcript(self) -> None:
-        self._text_blocks.clear()
-        self._thinking.clear()
-        self._tools.clear()
-        self._data_blocks.clear()
-        for panel in list(self._approvals.values()):
-            panel.resolved = True
-        self._approvals.clear()
-        self.status_bar.set_approvals(0)
-        self.status_bar.reset_tokens()
-
-    @property
-    def pending_attachments(self) -> list[dict]:
-        return self._pending_attachments
-
-    def add_attachment(self, attachment: dict) -> None:
-        self._pending_attachments.append(attachment)
-
-    def new_conversation(self) -> None:
-        """开新对话：生成新 CID，清空显示，保留旧会话可恢复。"""
-        self.conversation_id = new_conversation_id()
-        self.clear_transcript()
-        self.status_bar.set_conversation(self.conversation_id)
-        self.show_notice(f"已开新对话 {self.conversation_id}", "success")
-
-    def resolve_skill_name(self, ref: str) -> str | None:
-        """通过名称或编号解析 skill 名称。"""
-        if not self._cached_skills:
-            return None
-        if ref.isdigit():
-            idx = int(ref) - 1
-            if 0 <= idx < len(self._cached_skills):
-                return self._cached_skills[idx].get("name")
-            return None
-        for s in self._cached_skills:
-            if s.get("name") == ref:
-                return ref
-        return None
-
-    # ---------- 用户输入 ----------
-
-    @on(InputArea.Submitted)
-    def _on_submit(self, event: InputArea.Submitted) -> None:
-        event.stop()
-        text = event.text
-        if self.palette.display:
-            command = self.palette.current_command
-            if command is not None:
-                if command.usage:
-                    # 需要参数的命令：仅补全，不执行
-                    self.palette.hide()
-                    self.input_area.set_text(f"/{command.name} ")
-                    return
-                self.palette.hide()
-                self._echo_slash(f"/{command.name}")
-                if command.handler is not None:
-                    command.handler(self, [])
-                return
-
-        parsed = parse(text)
-        if parsed is not None:
-            self._echo_slash(text)
-            name, args = parsed
-            command = find(name)
-            if command is None or command.handler is None:
-                self.show_notice(
-                    f"未知命令 /{name}，输入 /help 查看全部命令", "error"
-                )
-            else:
-                command.handler(self, args)
-            return
-
-        # 普通文本 → chat.send（后端按会话 FIFO 排队）
-        echo_text = text
-        if self._pending_attachments:
-            names = [a["name"] for a in self._pending_attachments]
-            echo_text += f"  📎 [{', '.join(names)}]"
-        self._mount_chat(UserMessage(echo_text))
-        self.status_bar.reset_tokens()
-        params: dict[str, Any] = {"text": text}
-        if self._pending_attachments:
-            params["attachments"] = self._pending_attachments
-            self._pending_attachments = []
-        self.send_command(
-            OP_CHAT_SEND, params, kind="chat", label=OP_CHAT_SEND
-        )
-
-    @on(InputArea.TabPressed)
-    def _on_tab(self, event: InputArea.TabPressed) -> None:
-        event.stop()
-        if not self.palette.display:
-            return
-        command = self.palette.current_command
-        if command is not None:
-            self.input_area.set_text(
-                f"/{command.name} " if command.usage else f"/{command.name}"
-            )
-
-    @on(InputArea.PaletteNavigate)
-    def _on_palette_navigate(self, event: InputArea.PaletteNavigate) -> None:
-        event.stop()
-        if self.palette.display:
-            self.palette.move_highlight(event.direction)
-
-    @on(ApprovalPanel.Decision)
-    def _on_approval_decision(self, event: ApprovalPanel.Decision) -> None:
-        event.stop()
-        self._resolve_approval(event.panel, event.approved)
-
-    def action_escape(self) -> None:
-        """Esc：关面板 > 拒绝审批 > 中断在途 chat。"""
-        if self.palette.display:
-            self.palette.hide()
-            return
-        if self._approvals:
-            panel = list(self._approvals.values())[-1]
-            self._resolve_approval(panel, False)
-            return
-        if self._chat_inflight:
-            self.show_notice("发送中断请求 (chat.interrupt)…", "warn")
-            self.send_command(
-                "chat.interrupt", {}, kind="clear", label="chat.interrupt"
-            )
-            return
-        self.show_notice("当前没有需要处理的内容", "info")
-
-    # ---------- 命令面板随输入联动 ----------
-
-    @on(InputArea.Changed)
-    def _on_input_changed(self, event: InputArea.Changed) -> None:
-        if event.text_area is not self.input_area:
-            return
-        text = self.input_area.text
-        if text.startswith("/") and " " not in text:
-            self.palette.show_choices(match_prefix(text[1:]))
-        else:
-            self.palette.hide()
-
-    # ---------- 协议分发 ----------
+    # ---------- 分发 ----------
 
     def _dispatch_event(self, event: EventProtocol) -> None:
         self.call_next(self._handle_event, event)
@@ -464,445 +631,417 @@ class LrmneAgentApp(App):
     def _dispatch_exit(self, code: int, tail: str) -> None:
         self.call_next(self._handle_backend_exit, code, tail)
 
-    # ---------- 事件 → 渲染 ----------
-
-    @staticmethod
-    def _block_key(event: EventProtocol) -> str:
-        data = event.data
-        return f"{data.get('reply_id')}:{data.get('block_id')}"
-
     def _handle_event(self, event: EventProtocol) -> None:
-        name = event.event
-        data = event.data
+        """事件按信封上的 conversation_id 路由到对应会话。"""
+        conv = self.store.get_or_create(event.conversation_id)
+        handler = lookup_event(event.event)
+        if handler is not None:
+            handler(self, conv, event.data)
 
-        if name == "stream.text.start":
-            key = self._block_key(event)
-            markdown = StreamMarkdown("", classes="assistant-text")
-            self._text_blocks[key] = _TextBlock(key, markdown)
-            self._mount_chat(markdown)
+    def _handle_receipt(self, receipt: ReceiptProtocol) -> None:
+        conv = self.store.get_or_create(receipt.conversation_id)
+        request_id = receipt.request_id
+        info = conv.pending.pop(request_id, None) if request_id else None
 
-        elif name == "stream.text":
-            block = self._text_blocks.get(self._block_key(event))
-            if block is not None:
-                block.buffer += data.get("text_delta") or ""
-                if not block.scheduled:
-                    block.scheduled = True
-                    self.set_timer(
-                        0.07, functools.partial(self._flush_text, block.key)
-                    )
+        if receipt.accepted:
+            spec = lookup_operation(info.operation) if info is not None else None
+            if spec is not None and spec.render_result is not None:
+                spec.render_result(self, conv, receipt.result)
+            return
 
-        elif name == "stream.text.end":
-            self._flush_text(self._block_key(event), final=True)
+        conv.view.add(
+            NoticeLine(
+                f"命令失败 [{receipt.error_code}] {receipt.error_message or ''}",
+                "error",
+            ),
+        )
+        # 参数校验失败等路径不会再有 run.finished，需在此清掉在途标记
+        if info is not None and request_id is not None:
+            conv.inflight.discard(request_id)
+        # 失败时渲染器不会跑，别把这一轮的确认语留给下一条回执
+        self._pending_set = ""
+        self._pending_status = False
+        self._skills_pending = False
+        self.refresh_status()
 
-        elif name == "stream.thinking.start":
-            block = ThinkingBlock(str(data.get("block_id")))
-            self._thinking[self._block_key(event)] = block
-            self._mount_chat(block)
+    def _handle_backend_exit(self, code: int, tail: str) -> None:
+        self.status.set_state("idle")
+        self.notify_line(f"后端进程已退出 (code={code})", "error")
+        if tail:
+            self.store.current.view.add(
+                Card("stderr", Text(tail[-600:], style=S_FAINT)),
+            )
 
-        elif name == "stream.thinking":
-            block = self._thinking.get(self._block_key(event))
-            if block is not None:
-                block.append_delta(data.get("text_delta") or "")
-                self._stick_bottom()
+    def _flush_streams(self) -> None:
+        """把各会话攒下的流式文本合并写入并保持粘底。"""
+        for conv in self.store.all():
+            if conv.flush_dirty():
+                conv.view.stick_bottom()
 
-        elif name == "stream.thinking.end":
-            block = self._thinking.get(self._block_key(event))
-            if block is not None:
-                block.finish()
+    # ---------- 用户输入 ----------
 
-        elif name == "stream.data.start":
-            key = self._block_key(event)
-            self._data_blocks[key] = {
-                "media_type": data.get("media_type", "data"),
-                "buffer": b"",
-            }
+    @on(InputArea.Submitted)
+    def _on_submit(self, event: InputArea.Submitted) -> None:
+        event.stop()
+        text = event.text
 
-        elif name == "stream.data":
-            key = self._block_key(event)
-            block = self._data_blocks.get(key)
-            if block is not None:
-                raw = data.get("data", "")
-                if isinstance(raw, str):
-                    block["buffer"] += raw.encode(errors="replace")
+        # 先把面板当前选中的项读下来再动输入框：清空会触发的 Changed 会异步收起面板，
+        # 晚一步读就永远是空的。光一个 "/" 也走这里（默认选中第一条命令），否则它会被
+        # parse() 判为非命令，当成聊天内容发给后端。
+        if self.palette.display:
+            item = self.palette.current_mention
+            if item is not None:
+                self._accept_mention(item)
+                return
+            chosen = self.palette.current_command
+            if chosen is not None:
+                self._run_command(chosen)
+                return
+        if text == "/":
+            # 面板被 Esc 收起后只剩一个 "/"：重开列表，别把它当聊天内容发出去
+            self.palette.show_commands(match_prefix(""))
+            return
+        self.input_area.clear()
 
-        elif name == "stream.data.end":
-            key = self._block_key(event)
-            block = self._data_blocks.pop(key, None)
-            if block is not None:
-                media = block.get("media_type", "data")
-                size = len(block.get("buffer", b""))
-                self._mount_chat(
-                    HintBlock("data", f"收到数据块: {media} ({size} bytes)")
+        parsed = parse(text)
+        if parsed is not None:
+            self._echo_slash(text)
+            name, args = parsed
+            command = find(name)
+            if command is None or command.handler is None:
+                self.notify_line(f"未知命令 /{name}，输入 /help 查看全部命令", "error")
+                return
+            if args:
+                # 老写法（/thinking high、/config key value）不再吃参数
+                self.notify_line(
+                    f"/{command.name} 不接受参数，取值请在弹出的卡片里选", "warn"
                 )
-
-        elif name == "model.start":
-            self.status_bar.set_model(str(data.get("model_name") or "—"))
-
-        elif name == "model.end":
-            self.status_bar.add_tokens(
-                int(data.get("input_tokens") or 0),
-                int(data.get("output_tokens") or 0),
-            )
-
-        elif name == "stream.hint":
-            self._show_hint(data)
-
-        elif name == "tool.call.start":
-            view = ToolCallView(
-                str(data.get("tool_call_id")), str(data.get("name") or "tool")
-            )
-            self._tools[view.tool_call_id] = view
-            self._mount_chat(view)
-
-        elif name == "tool.call.delta":
-            view = self._tools.get(str(data.get("tool_call_id")))
-            if view is not None:
-                view.call_delta(str(data.get("delta") or ""))
-
-        elif name == "tool.call.end":
-            view = self._tools.get(str(data.get("tool_call_id")))
-            if view is not None:
-                view.call_end()
-
-        elif name == "tool.result.start":
-            pass  # 名称已在 tool.call.start 显示
-
-        elif name == "tool.result.delta":
-            view = self._tools.get(str(data.get("tool_call_id")))
-            if view is not None:
-                view.result_delta(str(data.get("text_delta") or ""))
-
-        elif name == "tool.result.data":
-            view = self._tools.get(str(data.get("tool_call_id")))
-            if view is not None:
-                view.result_data(
-                    str(data.get("media_type") or "data"), data.get("url")
-                )
-
-        elif name == "tool.result.end":
-            view = self._tools.get(str(data.get("tool_call_id")))
-            if view is not None:
-                state = data.get("state")
-                view.result_end(str(state) if state is not None else None)
-
-        elif name == "approval.request":
-            self._open_approval(data)
-
-        elif name == "reply.end":
-            error = data.get("error")
-            if error:
-                self.show_notice(f"回复出错：{error}", "error")
-
-        elif name == "run.queued":
-            self.show_notice(
-                f"已排队等待执行：{data.get('operation')}", "info"
-            )
-            self.status_bar.set_state("queued")
-
-        elif name == "run.finished":
-            self._run_finished(data)
-
-        # reply.start 无需渲染；未知事件静默丢弃
-
-    def _flush_text(self, key: str, final: bool = False) -> None:
-        block = self._text_blocks.get(key)
-        if block is None:
+            command.handler(self)
             return
-        # Markdown 挂载完成前 update 的内容会被 on_mount 清空，延迟重试
-        if not block.markdown.ready:
-            self.set_timer(
-                0.03, functools.partial(self._flush_text, key, final)
-            )
-            return
-        block.scheduled = False
-        try:
-            block.markdown.update(block.buffer)
-        except Exception:
-            return
-        if final:
-            self._text_blocks.pop(key, None)
-        self._stick_bottom()
 
-    def _run_finished(self, data: dict) -> None:
-        request_id = data.get("request_id")
-        if request_id is not None:
-            self._pending.pop(request_id, None)
-            self._chat_inflight.discard(request_id)
-        reason = data.get("stop_reason")
-        if reason == "error":
-            self.show_notice(f"执行出错：{data.get('error') or '未知错误'}", "error")
-        elif reason == "interrupted":
-            self.show_notice("已中断", "warn")
-        for key in list(self._text_blocks):
-            self._flush_text(key, final=True)
-        if not self._chat_inflight:
-            self.status_bar.set_state("idle")
+        self.send_chat(text)
 
-    def _show_hint(self, data: dict) -> None:
-        hint = data.get("hint")
-        if isinstance(hint, (list, dict)):
-            try:
-                text = json.dumps(hint, ensure_ascii=False, indent=2)
-            except (TypeError, ValueError):
-                text = str(hint)
+    def _accept_mention(self, item: Mention) -> None:
+        """把正在输入的 ``@片段`` 换成选中的候选。
+
+        目录只补成 ``@backend/adapter/``：面板不收起，列表接着列下一层，等于往下钻；
+        文件与 skill 补成 ``@标签 ``，光标落到空格后继续写正文。光标放在哪个词上决定
+        了「当前在哪一层」，所以这里不需要额外记状态。
+        """
+        area = self.input_area
+        text = area.text
+        offset = mentions.cursor_offset(text, area.cursor_location)
+        replaced = mentions.accept(text, offset, item)
+        if replaced is None:
+            self.palette.hide()
+            return
+        updated, caret = replaced
+        area.set_text(updated)
+        area.move_cursor(mentions.location_of(updated, caret))
+        if item.kind == mentions.DIR_KIND:
+            self.sync_palette()  # 接着列下一层；列表空了自己会让出一行说明
         else:
-            text = str(hint)
-        self._mount_chat(HintBlock(data.get("source"), text))
+            self.palette.hide()
+        area.focus()
+
+    def _run_command(self, command: SlashCommand) -> None:
+        """执行命令面板里选中的命令（Enter 或鼠标点选都走这里）。"""
+        self.palette.hide()
+        self.input_area.clear()
+        self._echo_slash(f"/{command.name}")
+        if command.handler is not None:
+            command.handler(self)
+        # 命令可能弹了浮窗，那就别把焦点抢回输入框；否则焦点会留在已收起的面板上
+        if self.active_overlay is None:
+            self.input_area.focus()
+
+    def send_chat(self, text: str) -> None:
+        """普通文本 → chat.send（后端按会话 FIFO 排队）。"""
+        conv = self.store.current
+        echo = text
+        if conv.attachments:
+            names = [item["name"] for item in conv.attachments]
+            echo += f"  [{', '.join(names)}]"
+        conv.view.add(UserMessage(echo))
+        conv.reset_tokens()
+
+        # 只有 /attach 带来的附件；正文里的 @路径 不读文件——它只是提示词里的一行字，
+        # 由模型自己用读文件的工具去取（省 token，也不会先塞进一份会过期的副本）
+        params: dict[str, Any] = {"text": text}
+        if conv.attachments:
+            params["attachments"] = conv.attachments
+        conv.attachments = []
+        self.send(OP_CHAT_SEND, params, conv=conv)
+
+    @on(InputArea.TabPressed)
+    def _on_tab(self, event: InputArea.TabPressed) -> None:
+        event.stop()
+        if not self.palette.display:
+            return
+        if self.palette.mode == "mention":
+            item = self.palette.current_mention
+            if item is not None:
+                self._accept_mention(item)
+            return
+        chosen = self.palette.current_command
+        if chosen is not None:
+            self.input_area.set_text(f"/{chosen.name}")
+
+    @on(InputArea.PaletteNavigate)
+    def _on_palette_navigate(self, event: InputArea.PaletteNavigate) -> None:
+        event.stop()
+        if self.palette.display:
+            self.palette.move_highlight(event.direction)
+
+    @on(OptionList.OptionSelected, "#palette")
+    def _on_palette_clicked(self, event: OptionList.OptionSelected) -> None:
+        """鼠标点选与 Enter 等价：点哪条就执行 / 插入哪条。"""
+        event.stop()
+        if self.palette.mode == "mention":
+            item = self.palette.current_mention
+            if item is not None:
+                self._accept_mention(item)
+            return
+        command = find(str(event.option_id))
+        if command is not None:
+            self._run_command(command)
+
+    @on(InputArea.Changed)
+    def _on_input_changed(self, event: InputArea.Changed) -> None:
+        if event.text_area is not self.input_area:
+            return
+        self.sync_palette()
+
+    def sync_palette(self) -> None:
+        """按触发词决定面板：``/`` 给命令，``@`` 给工作区目录树与 skill，其余收起。"""
+        area = self.input_area
+        offset = mentions.cursor_offset(area.text, area.cursor_location)
+        trigger = mentions.triggered(area.text, offset)
+        if trigger is None:
+            self.palette.hide()
+            return
+        kind, fragment = trigger
+        if kind == "command":
+            self.palette.show_commands(match_prefix(fragment))
+            return
+        self.palette.show_mentions(self.mention_candidates(fragment))
+
+    def mention_candidates(self, fragment: str) -> list[Mention]:
+        """提及候选：skill 在前（数量少、语义强），其后是路径。
+
+        ``@`` 空着就列**当前那一层**（目录在前、能接着往下钻）；打了字则在当前目录
+        之下**递归搜关键字**——不然 ``@work`` 找不到深处的 ``backend/workspace.py``。
+        当前在哪一层由正文本身决定：``@backend/adapter/`` 的作用域就是它自己。
+        """
+        self._load_skills_once()
+        root = self.workspace_root or os.getcwd()
+        scope, query = mentions.scope_of(fragment)
+        if not query:
+            return [*self.skills, *mentions.browse(root, scope)]
+        pool = self.workspace_files()
+        if scope:
+            # 已经钻进某一层了：只在它下面搜（缓存里就是带前缀的相对路径，过滤即可）
+            pool = [item for item in pool if item.label.startswith(scope)]
+        return mentions.match([*self.skills, *pool], query)
+
+    def workspace_files(self) -> list[Mention]:
+        """整个工作区的文件与目录：按工作目录缓存一次，扫描是同步 IO，别每次按键都走。"""
+        # 启动时 config.get 还没回来，root 是空的；此时按进程 cwd 列（前端就是从
+        # 项目根启动的，见 README 的启动方式），等配置到了再按真正的 root 重扫
+        root = self.workspace_root or os.getcwd()
+        if self._files_cache is None or self._files_cache[0] != root:
+            self._files_cache = (root, mentions.walk(root))
+        return self._files_cache[1]
+
+    def _load_skills_once(self) -> None:
+        if self.skills or self._skills_pending:
+            return
+        self._skills_pending = True
+        self.send("skill.list", {})
+
+    def remember_skills(self, skills: list) -> None:
+        """``skill.list`` 回执落进提及候选；@ 面板正开着就顺手重排一遍。"""
+        self.skills = mentions.from_skills(skills)
+        if self.palette.display and self.palette.mode == "mention":
+            self.sync_palette()
+
+    def consume_mention_skills(self) -> bool:
+        """取走「这次 skill.list 是 @ 面板发起的」标记（读一次即清）。
+
+        这种请求只是为了填候选，不能在转录里出卡片。
+        """
+        pending, self._skills_pending = self._skills_pending, False
+        return pending
+
+    @on(ApprovalPanel.Decision)
+    def _on_approval_decision(self, event: ApprovalPanel.Decision) -> None:
+        event.stop()
+        self._resolve_approval(event.panel, event.approved, always=event.always)
+
+    def action_escape(self) -> None:
+        """Esc：关面板 > 拒绝审批 > 暂停在途对话；没有可暂停的事就什么都不做。
+
+        浮窗打开时由 ``Overlay`` 自己的 Esc 绑定先消费，走不到这里。
+
+        一次运行只下发一次中断：中断就是取消正在跑的那个任务，重复下发会让
+        agentscope 在收尾途中再挨一次取消，结果帧与 run.finished 都发不出来，
+        界面反而卡在「执行中」（见 ``Conversation.stopping``）。
+        """
+        if self.palette.display:
+            self.palette.hide()
+            return
+        conv = self.store.current
+        if conv.approvals:
+            self._resolve_approval(list(conv.approvals.values())[-1], False)
+            return
+        if conv.inflight and not conv.stopping:
+            conv.stopping = True
+            self.send("chat.interrupt", {}, conv=conv)
+            self.notify_line("已暂停", "warn", conv=conv)
 
     # ---------- 审批 ----------
 
-    def _open_approval(self, data: dict) -> None:
-        approval_id = str(
-            data.get("approval_request_id") or data.get("reply_id") or ""
-        )
-        if not approval_id or approval_id in self._approvals:
-            return
-        panel = ApprovalPanel(
-            approval_id,
-            list(data.get("tool_calls") or []),
-            classes="approval-panel",
-        )
-        self._approvals[approval_id] = panel
-        self._mount_chat(panel)
-        self.call_after_refresh(panel.focus)
-        self.status_bar.set_approvals(len(self._approvals))
+    def _conversation_of(self, panel: ApprovalPanel) -> Conversation:
+        for conv in self.store.all():
+            if panel.approval_request_id in conv.approvals:
+                return conv
+        return self.store.current
 
-    def _resolve_approval(self, panel: ApprovalPanel, approved: bool) -> None:
+    def _resolve_approval(
+        self, panel: ApprovalPanel, approved: bool, *, always: bool = False
+    ) -> None:
         if panel.resolved:
             return
+        conv = self._conversation_of(panel)
         panel.mark_resolved(approved)
-        self._approvals.pop(panel.approval_request_id, None)
-        self.status_bar.set_approvals(len(self._approvals))
-        self.send_command(
+        conv.approvals.pop(panel.approval_request_id, None)
+        # 没有别的要等的审批了才恢复计时：等待那段不算进工具耗时
+        if not conv.approvals:
+            conv.set_tools_awaiting(False)
+        self.refresh_status()
+        self.send(
             "approval.respond",
             {
                 "approval_request_id": panel.approval_request_id,
                 "approved": approved,
+                "always": approved and always,
             },
-            kind="approval",
-            label="approval.respond",
+            conv=conv,
         )
-        self.show_notice(
-            "已允许该工具调用" if approved else "已拒绝该工具调用",
-            "success" if approved else "warn",
-        )
-        if not self._approvals:
+        # 结果由面板自己说（已处理 / 已允许，等待工具执行…），不再往转录里补一行
+        if not conv.approvals:
             self.input_area.focus()
 
-    # ---------- 回执 → 展示 ----------
-
-    def _handle_receipt(self, receipt: ReceiptProtocol) -> None:
-        request_id = receipt.request_id
-        info = self._pending.pop(request_id, None) if request_id else None
-
-        if receipt.accepted:
-            if info is None:
-                return
-            if info.kind == "config":
-                self._apply_config_result(receipt.result, info.label)
-            elif info.kind == "session":
-                self._apply_session_list(receipt.result)
-            elif info.kind == "session-resume":
-                self._apply_session_resume(receipt.result, info.label)
-            elif info.kind == "session-delete":
-                self._apply_session_delete(receipt.result)
-            elif info.kind == "diff":
-                self._apply_diff_show(receipt.result)
-            elif info.kind == "undo":
-                self._apply_diff_undo(receipt.result)
-            elif info.kind == "skill-list":
-                self._apply_skill_list(receipt.result)
-            elif info.kind == "mcp-list":
-                self._apply_mcp_list(receipt.result)
-            # chat / approval 的成功回执由后续事件驱动展示
-            return
-
-        code = receipt.error_code
-        message = receipt.error_message or ""
-        self.show_notice(f"命令失败 [{code}] {message}", "error")
-        if info is None:
-            return
-        if info.kind == "chat":
-            self._chat_inflight.discard(request_id)
-            if not self._chat_inflight:
-                self.status_bar.set_state("idle")
-        elif info.kind == "approval":
-            self.show_notice("审批回执失败，可重新选择 y/n", "warn")
-
-    def _apply_config_result(self, result: Any, label: str) -> None:
-        """config.get/set 的回执结果：更新状态栏 + 展示卡片。"""
-        flat: dict[str, Any] = {}
-        if isinstance(result, dict):
-            for section, value in result.items():
-                if isinstance(value, dict):
-                    flat.update(value)
-                else:
-                    flat[section] = value
-        else:
-            flat["result"] = result
-
-        self.status_bar.apply_config(flat)
-
-        body = Text()
-        for key, value in flat.items():
-            if key in ("credential", "api_key") and isinstance(value, dict):
-                # 后端公开视图形如 credential = {"api_key": {"configured": …}}
-                api_key = value.get("api_key")
-                if not isinstance(api_key, dict):
-                    api_key = value
-                if api_key.get("configured"):
-                    shown = f"已配置 (****{api_key.get('suffix', '')})"
-                else:
-                    shown = "未配置"
-            elif isinstance(value, (dict, list)):
-                try:
-                    shown = json.dumps(value, ensure_ascii=False)
-                except (TypeError, ValueError):
-                    shown = str(value)
-            else:
-                shown = str(value)
-            if len(shown) > 72:
-                shown = shown[:72] + "…"
-            body.append(f"{key:<16}", style=f"bold {COLOR_TOOL}")
-            body.append(f"{shown}\n", style="#c0caf5")
-        self._mount_chat(Card(label, body))
-
-    def _apply_session_list(self, result: Any) -> None:
-        """渲染 session.list 的回执：展示所有历史会话。"""
-        sessions = result if isinstance(result, list) else []
-        body = Text()
-        if not sessions:
-            body.append("暂无历史会话", style=COLOR_DIM)
-        else:
-            for s in sessions:
-                cid = s.get("cid", "?")
-                summary = s.get("summary") or ""
-                modified = s.get("modified")
-                body.append(f"  {cid}", style=f"bold {COLOR_TOOL}")
-                if summary:
-                    body.append(f"  {summary}", style="#c0caf5")
-                if modified:
-                    from datetime import datetime
-                    ts = datetime.fromtimestamp(modified).strftime("%m-%d %H:%M")
-                    body.append(f"  {ts}", style=COLOR_DIM)
-                body.append("\n")
-            body.append("使用 /resume <cid> 恢复，/delete <cid> 删除", style=COLOR_DIM)
-        self._mount_chat(Card("历史会话", body))
-
-    def _apply_session_resume(self, result: Any, label: str) -> None:
-        """渲染 session.resume 的回执。"""
-        if isinstance(result, dict) and result.get("resumed"):
-            source = result.get("source_cid", "?")
-            self.show_notice(f"已恢复会话 {source}，发送消息即可继续", "success")
-        else:
-            self.show_notice(f"恢复失败：{result}", "error")
-
-    def _apply_session_delete(self, result: Any) -> None:
-        """渲染 session.delete 的回执。"""
-        if isinstance(result, dict) and result.get("deleted"):
-            self.show_notice(f"已删除会话 {result.get('cid', '?')}", "success")
-        else:
-            self.show_notice(f"删除失败：{result}", "error")
-
-    def _apply_diff_show(self, result: Any) -> None:
-        """渲染 diff.show 的回执：展示文件改动差异。"""
-        if not isinstance(result, dict):
-            self.show_notice("无改动记录", "info")
-            return
-        diffs = result.get("diffs", [])
-        round_num = result.get("round", "?")
-        if not diffs:
-            self.show_notice(f"第 {round_num} 轮无文件改动", "info")
-            return
-        body = Text()
-        body.append(f"第 {round_num} 轮，共 {len(diffs)} 个文件\n\n", style=COLOR_DIM)
-        for item in diffs:
-            file_path = item.get("file", "?")
-            diff_text = item.get("diff", "")
-            body.append(f"── {file_path} ──\n", style=f"bold {COLOR_TOOL}")
-            for line in diff_text.splitlines():
-                if line.startswith("+++") or line.startswith("---"):
-                    body.append(line + "\n", style=f"bold {COLOR_ACCENT}")
-                elif line.startswith("+"):
-                    body.append(line + "\n", style=COLOR_OK)
-                elif line.startswith("-"):
-                    body.append(line + "\n", style=COLOR_ERR)
-                elif line.startswith("@@"):
-                    body.append(line + "\n", style=COLOR_DIM)
-                else:
-                    body.append(line + "\n")
-            body.append("\n")
-        self._mount_chat(Card("文件改动", body))
-
-    def _apply_diff_undo(self, result: Any) -> None:
-        """渲染 diff.undo 的回执。"""
-        if isinstance(result, dict):
-            message = result.get("message", "")
-            self.show_notice(message, "success" if result.get("restored") else "warn")
-        else:
-            self.show_notice("撤销操作完成", "success")
-
-    def _apply_skill_list(self, result: Any) -> None:
-        """渲染 skill.list 的回执。"""
-        body = Text()
-        skills = result if isinstance(result, list) else []
-        self._cached_skills = skills
-        if not skills:
-            body.append("暂无可用 skills", style=COLOR_DIM)
-        else:
-            for i, s in enumerate(skills, 1):
-                name = s.get("name", "?")
-                desc = s.get("description", "")
-                body.append(f"  {i}. ", style=f"bold {COLOR_TOOL}")
-                body.append(name, style="bold #c0caf5")
-                if desc:
-                    body.append(f"  {desc}", style=COLOR_DIM)
-                body.append("\n")
-            body.append("使用 /use-skill <编号或名称> 使用", style=COLOR_DIM)
-        self._mount_chat(Card("Skills", body))
-
-    def _apply_mcp_list(self, result: Any) -> None:
-        """渲染 mcp.list 的回执。"""
-        body = Text()
-        mcps = result if isinstance(result, list) else []
-        self._cached_mcp = mcps
-        if not mcps:
-            body.append("暂无已连接的 MCP 服务器", style=COLOR_DIM)
-        else:
-            for i, m in enumerate(mcps, 1):
-                name = m.get("name", "?")
-                mtype = m.get("type", "?")
-                tool_count = m.get("tool_count", 0)
-                body.append(f"  {i}. ", style=f"bold {COLOR_TOOL}")
-                body.append(name, style="bold #c0caf5")
-                body.append(f"  {mtype}", style=COLOR_DIM)
-                body.append(f"  {tool_count} tools", style=COLOR_OK)
-                body.append("\n")
-        self._mount_chat(Card("MCP 服务器", body))
-
-    # ---------- 后端退出 ----------
-
-    def _handle_backend_exit(self, code: int, tail: str) -> None:
-        self.status_bar.set_state("idle")
-        self.show_notice(f"后端进程已退出 (code={code})", "error")
-        if tail:
-            shown = tail[-600:]
-            self._mount_chat(Card("stderr", Text(shown, style=COLOR_DIM)))
-
-    # ---------- 挂载辅助 ----------
-
-    def _mount_chat(self, widget: Any) -> None:
-        self.chat_log.mount(widget)
-        self._stick_bottom()
+    # ---------- 本地动作（供 commands.py 调用） ----------
 
     def _echo_slash(self, text: str) -> None:
-        self._mount_chat(UserMessage(text, slash=True))
+        self.store.current.view.add(UserMessage(text, slash=True))
 
-    def _stick_bottom(self) -> None:
-        try:
-            log = self.chat_log
-            at_bottom = log.scroll_offset.y >= log.max_scroll_y - 2
-        except Exception:
+    def _mount_welcome(self, conv: Conversation) -> None:
+        body = Text()
+        body.append(
+            f"protocol {PROTOCOL_VERSION}  ·  conversation {conv.cid}\n",
+            style=S_FAINT,
+        )
+        body.append(f"{GLYPH_USER} ", style=S_TEXT)
+        body.append("输入消息开始对话\n", style=S_TEXT)
+        body.append("/ ", style=S_TOOL)
+        body.append("呼出命令    ", style=S_FAINT)
+        body.append("@ ", style=S_TOOL)
+        body.append("引用文件或 skill\n", style=S_FAINT)
+        body.append("Esc ", style=S_WARN)
+        body.append("暂停    ", style=S_FAINT)
+        body.append("Ctrl+Q ", style=S_FAINT)
+        body.append("退出", style=S_FAINT)
+        conv.view.add(Card("LrmneAgent", body))
+
+    def new_conversation(self) -> None:
+        cid = new_conversation_id()
+        self.open_conversation(cid, welcome=True)
+        self.notify_line(f"已开新对话 {cid}", "success")
+
+    def open_model_config(self) -> None:
+        """打开模型配置浮窗（/model 或 F2）；已在窗口内则不重复入栈。"""
+        if self.model_config_overlay is not None:
             return
-        if at_bottom:
-            log.scroll_end(animate=False, force=True)
+        self.push_screen(ModelConfigOverlay())
+
+    def open_sessions(self) -> None:
+        """打开会话切换浮窗（/sessions 或 F3）。"""
+        if self.session_overlay is not None:
+            return
+        self.push_screen(SessionSwitcherOverlay())
+
+    def open_picker(
+        self,
+        kind: str,
+        title: str,
+        choices: list[Choice] | None = None,
+        current: Any = None,
+        on_select: Callable[[Any], None] | None = None,
+    ) -> Picker:
+        """打开一个选择浮窗。
+
+        命令本身永远不带参数：需要选值时弹这张卡片，用 ↑↓/Enter 挑。
+        ``choices`` 省略时由后续回执经 :meth:`Picker.set_choices` 填入。
+        """
+        self.close_overlays()
+        picker = Picker(kind, title, on_select)
+        self.push_screen(picker)
+        if choices is not None:
+            picker.set_choices(choices, current)
+        return picker
+
+    def open_prompt(
+        self,
+        kind: str,
+        title: str,
+        caption: str = "",
+        value: str = "",
+        placeholder: str = "",
+        on_submit: Callable[[str], None] | None = None,
+    ) -> Prompt:
+        """打开一个单行输入浮窗（路径这类自由文本）。"""
+        self.close_overlays()
+        prompt = Prompt(kind, title, caption, value, placeholder, on_submit)
+        self.push_screen(prompt)
+        return prompt
+
+    def close_overlays(self) -> None:
+        """关掉所有浮窗，把焦点交还输入框。"""
+        changed = False
+        while isinstance(self.screen, Overlay):
+            self.screen.dismiss(None)
+            changed = True
+        if changed:
+            self.input_area.focus()
+
+    def action_model_config(self) -> None:
+        self.open_model_config()
+
+    def action_sessions(self) -> None:
+        self.open_sessions()
+
+    def clear_transcript(self) -> None:
+        conv = self.store.current
+        conv.clear_render_state()
+        conv.view.remove_children()
+        self.refresh_status()
+
+    def show_command_help(self) -> None:
+        from .commands import COMMANDS
+
+        body = Text()
+        for cmd in COMMANDS:
+            body.append(f"/{cmd.name}", style=S_TEXT)
+            if cmd.aliases:
+                body.append(f" (/{' /'.join(cmd.aliases)})", style=S_TOOL)
+            body.append(f" — {cmd.description}\n", style=S_FAINT)
+        self.store.current.view.add(Card("命令", body))
+
+    def add_attachment(self, attachment: dict) -> None:
+        self.store.current.attachments.append(attachment)
+
+    @property
+    def pending_attachments(self) -> list[dict]:
+        return self.store.current.attachments

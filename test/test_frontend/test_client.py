@@ -35,7 +35,12 @@ class _Stdin:
 
 class _Proc:
     def __init__(self, stdout=(), stderr=(), returncode=0):
-        self.stdout = _Reader(stdout)
+        # 允许直接塞一个真 StreamReader，用来压超限行那条路径
+        self.stdout = (
+            stdout
+            if isinstance(stdout, asyncio.StreamReader)
+            else _Reader(stdout)
+        )
         self.stderr = _Reader(stderr)
         self.stdin = _Stdin()
         self.returncode = returncode
@@ -121,3 +126,27 @@ def test_stderr_keeps_a_tail():
     asyncio.run(client._pump_stderr())
 
     assert list(client._stderr_tail) == ["warn"]
+
+
+def test_overlong_line_is_dropped_but_pump_survives():
+    """一行超过 StreamReader 上限：丢这一帧、泵继续读后面的行。
+
+    回归的是「Glob 全仓匹配回了一行 2MB 的 JSON，readline 抛 ValueError 打死
+    整条泵」——前端从此收不到任何帧，Esc 之后界面还停在「执行中 / 运行中」。
+    """
+    client, events, _, _ = _client()
+    good = make_event("c-1", "token", {"text": "hi"})
+
+    async def body():
+        # 上限卡在「正常协议行之下、超限行之上」：200 字的那行触发超限被丢，
+        # 后面那条正常事件行必须照常读到
+        stream = asyncio.StreamReader(limit=128)
+        stream.feed_data(b"x" * 200 + b"\n")
+        stream.feed_data((to_line(good) + "\n").encode("utf-8"))
+        stream.feed_eof()
+        client._proc = _Proc(stdout=stream, returncode=0)
+        await client._pump_stdout()
+
+    asyncio.run(body())
+
+    assert [item.event for item in events] == ["token"]

@@ -25,6 +25,26 @@ from proxy_layer.schema import (
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
+# 协议行可以非常大：Glob / Grep 一整块结果就是**一行** JSON（实测 2MB+）。
+# StreamReader 默认 64KB 上限，超了 readline 直接抛 ValueError，而泵里没有兜底，
+# 整条泵就此死掉——前端再也收不到任何帧，表现为「Esc 之后工具还在转、状态栏还
+# 在运行中」（后端其实已经收尾，只是帧没人读，管道写满后它也卡住）。上限放宽到
+# 32MB，真再超长的行由 _read_line 丢帧兜底，绝不让泵死。
+_STREAM_LIMIT = 32 * 1024 * 1024
+
+
+async def _read_line(stream: asyncio.StreamReader) -> bytes:
+    """读一行；行超过 limit 时 readline 抛 ValueError。
+
+    超限行不能打死泵：CPython 在抛错前已把该行从内部 buffer 移除（没找到换行
+    时是清空），所以这里跳过继续读下一行即可——丢一帧好过整个前端失联。
+    """
+    while True:
+        try:
+            return await stream.readline()
+        except (ValueError, asyncio.LimitOverrunError):
+            continue
+
 # 后端没有 __main__ 入口，这里用 -c 引导启动 Runtime 主循环。
 #
 # 其中对 create_subprocess_exec 注入 stdin=DEVNULL 是必须的 workaround：
@@ -88,15 +108,19 @@ class BackendClient:
             [str(PROJECT_ROOT), env.get("PYTHONPATH", "")]
         ).rstrip(os.pathsep)
 
+        # cwd 用启动时所在目录，不用源码根。
+        # WorkspaceManager 在导入时以 os.getcwd() 为项目根并创建 .lrmneagent；
+        # 导入靠上面的 PYTHONPATH，不依赖 cwd。
         self._proc = await asyncio.create_subprocess_exec(
             sys.executable,
             "-c",
             _BOOTSTRAP,
-            cwd=str(PROJECT_ROOT),
+            cwd=os.getcwd(),
             env=env,
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            limit=_STREAM_LIMIT,
         )
         self._pump_tasks = [
             asyncio.create_task(self._pump_stdout()),
@@ -156,7 +180,7 @@ class BackendClient:
         proc = self._proc
         assert proc is not None and proc.stdout is not None
         while True:
-            raw = await proc.stdout.readline()
+            raw = await _read_line(proc.stdout)
             if not raw:  # EOF
                 break
             text = raw.decode("utf-8", "replace").strip()
@@ -190,7 +214,7 @@ class BackendClient:
         proc = self._proc
         assert proc is not None and proc.stderr is not None
         while True:
-            raw = await proc.stderr.readline()
+            raw = await _read_line(proc.stderr)
             if not raw:
                 break
             self._stderr_tail.append(raw.decode("utf-8", "replace").rstrip())
