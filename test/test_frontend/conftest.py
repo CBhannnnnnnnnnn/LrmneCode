@@ -10,6 +10,7 @@ import pytest
 from rich.text import Text
 
 from frontend import app as app_module
+from frontend.app import main as app_main
 from proxy_layer.schema import make_event, make_receipt_success
 
 
@@ -52,7 +53,9 @@ def anyio_backend():
 
 @pytest.fixture
 def make_app(monkeypatch):
-    monkeypatch.setattr(app_module, "BackendClient", FakeClient)
+    # patch 的必须是**调用处所在模块**的全局：`from x import Name` 绑的是各模块自己的命名空间，
+    # 拆包后只打包名会静默失效（FakeClient 不生效、测试真去拉后端子进程）。
+    monkeypatch.setattr(app_main, "BackendClient", FakeClient)
 
     def factory():
         return app_module.LrmneAgentApp()
