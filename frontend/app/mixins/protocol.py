@@ -94,7 +94,6 @@ class ProtocolMixin:
             conv.inflight.discard(request_id)
         # 失败时渲染器不会跑，别把这一轮的确认语留给下一条回执
         self._pending_set = ""
-        self._pending_status = False
         self._skills_pending = False
         self.refresh_status()
 

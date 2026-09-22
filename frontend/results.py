@@ -10,7 +10,6 @@ import os
 from datetime import datetime
 from typing import Any
 
-from rich.cells import cell_len as _cell_len
 from rich.text import Text
 
 from .overlay import Choice
@@ -46,9 +45,8 @@ def _flatten(result: Any) -> dict[str, Any]:
 def _render_config(app, conv, result: Any) -> None:
     """config.get / config.set 的回执：只刷状态栏，不往转录里倒字段。
 
-    启动时也会发一次 config.get，它的回执若渲染成卡片，用户一进来就先看到
-    ``provider_type`` / ``agent_home`` 这类开发信息；只有 /status 明确要卡片时
-    才出一张汇总视图。
+    启动时也会发一次 config.get，它的回执不出卡片，用户一进来不会先看到
+    ``provider_type`` / ``agent_home`` 这类开发信息。
     """
     flat = _flatten(result)
     # config.set 的回执是 {"key": …, "value": …}（见 handlers/config.py）：不翻成
@@ -70,46 +68,6 @@ def _render_config(app, conv, result: Any) -> None:
     confirmation = app.consume_pending_set()
     if confirmation:
         conv.view.add(NoticeLine(confirmation, "success"))
-        return
-
-    if app.consume_status_card():
-        conv.view.add(Card("配置", _config_body(flat)))
-
-
-def _config_body(flat: dict[str, Any]) -> Text:
-    """把配置视图整理成用户关心的一小块：模型 / 思考 / 权限 / 工作区。"""
-    rows: list[tuple[str, str]] = []
-    model = flat.get("model")
-    if model:
-        rows.append(("模型", str(model)))
-    if "thinking_level" in flat:
-        rows.append(("思考级别", str(flat["thinking_level"] or "off")))
-    if "mode" in flat:
-        rows.append(("权限模式", str(flat["mode"] or "default")))
-    if flat.get("context_size"):
-        rows.append(("上下文窗口", f"{flat['context_size']:,}"))
-    if flat.get("root"):
-        rows.append(("工作区", str(flat["root"])))
-
-    # 凭证只报「配没配」，不回传密钥本身
-    credential = flat.get("credential")
-    if isinstance(credential, dict):
-        api_key = credential.get("api_key")
-        if not isinstance(api_key, dict):
-            api_key = credential
-        if api_key.get("configured"):
-            rows.append(("API Key", f"已配置 (****{api_key.get('suffix', '')})"))
-        else:
-            rows.append(("API Key", "未配置"))
-
-    body = Text()
-    for index, (label, value) in enumerate(rows):
-        if index:
-            body.append("\n")
-        # 中文标签占两列，按显示宽度补空格才对得齐
-        body.append(f"{label}{' ' * max(0, 12 - _cell_len(label))}", style=S_FAINT)
-        body.append(value, style=S_TEXT)
-    return body
 
 
 @operation("config.providers", label="提供方列表")

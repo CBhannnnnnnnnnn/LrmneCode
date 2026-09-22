@@ -42,6 +42,15 @@ THINKING_NOTES: dict[str, str] = {
     "high": "深思考，最慢",
 }
 
+# 上下文窗口档位：token 数 → (展示标签, 说明)；值写入配置项的 context_size
+CONTEXT_SIZES: tuple[tuple[int, str, str], ...] = (
+    (200_000, "200K", "日常编码够用"),
+    (400_000, "400K", "长文件与多轮对话"),
+    (1_000_000, "1M", "超大仓库，最耗额度"),
+)
+
+_CONTEXT_LABELS: dict[int, str] = {value: label for value, label, _ in CONTEXT_SIZES}
+
 
 @dataclass(frozen=True)
 class SlashCommand:
@@ -115,13 +124,6 @@ def cmd_quit(app: "LrmneAgentApp") -> None:
     app.exit()
 
 
-@command("status", "查看当前配置与运行状态", aliases=("info",))
-def cmd_status(app: "LrmneAgentApp") -> None:
-    # 配置卡片由 config.get 回执渲染：值来自后端，而不是本地缓存
-    app.request_status_card()
-    app.send("config.get", {})
-
-
 # ---------- 配置：一律弹卡片，不做"命令 + 值" ----------
 
 
@@ -155,6 +157,21 @@ def cmd_permission(app: "LrmneAgentApp") -> None:
         current=app.permission_mode,
         on_select=lambda mode: app.set_config_value(
             "mode", mode, f"权限模式已设为 {mode}"
+        ),
+    )
+
+
+@command("context", "选择上下文窗口大小")
+def cmd_context(app: "LrmneAgentApp") -> None:
+    app.open_picker(
+        "context",
+        "上下文窗口",
+        choices=[Choice(label, note, value) for value, label, note in CONTEXT_SIZES],
+        current=app.context_size,
+        on_select=lambda size: app.set_config_value(
+            "context_size",
+            size,
+            f"上下文窗口已设为 {_CONTEXT_LABELS.get(size, size)}",
         ),
     )
 

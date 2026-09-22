@@ -9,7 +9,7 @@ from rich.cells import cell_len
 from rich.text import Text
 from textual.containers import Vertical, VerticalScroll
 from textual.widgets import Static
-from ..theme import GLYPH_ELLIPSIS, S_FAINT, S_TEXT
+from ..theme import GLYPH_ELLIPSIS, S_FAINT, S_TEXT, S_USER
 from .base import _tail_path
 from .usage import _fmt_tokens, prompt_total
 
@@ -25,6 +25,13 @@ _SEP_WIDTH = cell_len(_SEPARATOR)
 _TAIL_WIDTH = cell_len(f" {GLYPH_ELLIPSIS}")
 
 
+def _brand_mark() -> Text:
+    """侧栏底部的品牌字：产品名（加粗、字母留白）+ 副标题，弱色不抢正文。"""
+    mark = Text()
+    mark.append(" ".join("LrmneAgent") + "\n", style=S_USER)
+    mark.append("coding agent", style=S_FAINT)
+    return mark
+
 
 class SidePanel(Vertical):
     """右侧栏：这次会话跑出来的量化信息，一类一个小框。
@@ -33,9 +40,9 @@ class SidePanel(Vertical):
     吞吐、缓存命中、思考与权限档位、工作目录、会话号。
 
     三类各占一个带边框的小框，框标题写类别名，框内只放数值——这样"这是一组"
-    不靠空行去暗示。配置那一框钉在底部：它高度固定、内容不随运行变化，而上面
-    两框会随分段数长高，钉住才不会在窗口不够高时被挤出可视区（转录区那边
-    长出来的内容不该决定这里看不看得见档位）。上面两框放进可滚动容器兜底。
+    不靠空行去暗示。三框同处一个可滚动容器，按上下文 / 用量 / 配置依次排列；
+    面板最底部钉一块品牌区（产品名字标），不随上面的框滚动：转录区长出来的
+    内容不该把侧栏的落款挤走。
     """
 
     # 上下文构成的展示顺序与中文名；key 由后端 model.end 的 context 段给出
@@ -57,6 +64,7 @@ class SidePanel(Vertical):
         self._context_box = Static("", classes="side-box", id="side-context")
         self._metric_box = Static("", classes="side-box", id="side-metric")
         self._config_box = Static("", classes="side-box", id="side-config")
+        self._brand_box = Static(_brand_mark(), classes="side-brand", id="side-brand")
         self._tokens_in = 0
         self._tokens_out = 0
         self._context_tokens = 0
@@ -77,9 +85,9 @@ class SidePanel(Vertical):
 
     def compose(self):
         yield VerticalScroll(
-            self._context_box, self._metric_box, id="side-scroll"
+            self._context_box, self._metric_box, self._config_box, id="side-scroll"
         )
-        yield self._config_box
+        yield self._brand_box
 
     # -- 对外接口 --
 

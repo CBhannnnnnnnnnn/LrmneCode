@@ -27,8 +27,8 @@ Footer {
 }
 /* 右侧栏：与底部状态栏同一档底色，读起来是同一层"边框外的 chrome"。
    三类信息各占一个小框，类别名写在框上；宽度按最长的一行（目录 + 会话号）
-   留够，不做省略。配置框钉在底部：上面两框会随上下文分段数长高，窗口不够高
-   时该长高的自己滚，不能把不常变的档位挤出可视区。 */
+   留够，不做省略。三框同处滚动区，窗口不够高时一起滚；最底部钉一块品牌区，
+   不随上面的框滚动。 */
 #side {
     width: 34;
     height: 1fr;
@@ -54,8 +54,14 @@ Footer {
     border-title-color: $text-dim;
     border-title-align: left;
 }
-#side-config {
+/* 品牌区：面板底部的文字 logo，弱色居中，钉底不随滚动。 */
+#side-brand {
     dock: bottom;
+    width: 100%;
+    height: auto;
+    background: $surface;
+    text-align: center;
+    padding: 1 0 0 0;
 }
 ChatView {
     height: 1fr;

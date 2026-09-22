@@ -64,8 +64,6 @@ class LrmneAgentApp(SessionsMixin, ProtocolMixin, InteractionMixin, MentionsMixi
         self.config: dict[str, Any] = {}
         # 待用的配置确认语：由 set_config_value 写入，回执渲染时取走
         self._pending_set = ""
-        # /status 主动要一张配置卡片：启动时的静默 config.get 不该在转录里出内容
-        self._pending_status = False
         # @ 提及的候选：文件按工作目录缓存一次，skill 列表由后端回执填
         self._files_cache: tuple[str, list[Mention]] | None = None
         self.skills: list[Mention] = []

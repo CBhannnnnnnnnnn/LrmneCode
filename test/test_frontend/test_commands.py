@@ -14,6 +14,7 @@ from frontend.commands import (
     COMMANDS,
     attach_file,
     cmd_attach,
+    cmd_context,
     cmd_cwd,
     cmd_diff,
     cmd_model,
@@ -66,6 +67,7 @@ class _App:
             "thinking_level": "medium",
             "mode": "default",
             "root": "D:/code/demo",
+            "context_size": 400_000,
         }
 
     # -- 协议 / 提示 --
@@ -121,6 +123,11 @@ class _App:
     @property
     def workspace_root(self):
         return str(self.config.get("root") or "")
+
+    @property
+    def context_size(self):
+        value = self.config.get("context_size")
+        return value if isinstance(value, int) else 0
 
     @property
     def pending_attachments(self):
@@ -217,6 +224,22 @@ def test_permission_offers_modes_with_notes():
 
     picker.on_select("accept_edits")
     assert app.sent == [("config.set", {"key": "mode", "value": "accept_edits"})]
+
+
+def test_context_offers_sizes_and_writes_the_chosen_one():
+    app = _App()
+
+    cmd_context(app)
+
+    (picker,) = app.pickers
+    assert picker.kind == "context"
+    assert [choice.value for choice in picker.choices] == [200_000, 400_000, 1_000_000]
+    assert picker.current == 400_000  # 卡片要标出当前值
+    assert app.sent == []  # 打开卡片本身不发命令
+
+    picker.on_select(1_000_000)
+    assert app.sent == [("config.set", {"key": "context_size", "value": 1_000_000})]
+    assert app.confirmations == ["上下文窗口已设为 1M"]
 
 
 def test_cwd_prompts_with_current_root_and_sets_it():

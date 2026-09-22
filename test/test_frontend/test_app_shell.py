@@ -205,11 +205,12 @@ async def test_model_usage_lands_on_the_block_and_the_status_bar(make_app):
 
 
 @pytest.mark.anyio
-async def test_side_panel_pins_config_box_when_content_overflows(make_app):
-    """窗口不够高时：会长的两框自己滚，钉底的配置框整块留在可视区。
+async def test_side_panel_scrolls_config_and_keeps_brand_at_bottom(make_app):
+    """配置框与上下文 / 用量同处滚动区，品牌区整块钉在面板底部。
 
     回归的是「一跑起来配置整段消失」：那时三类信息连成一串写在同一个部件里，
-    超出面板高度的尾巴被直接裁掉，最先没的正是排在最后的配置。
+    超出面板高度的尾巴被直接裁掉。现在配置进了滚动容器（可滚），底部品牌区
+    不随上面的框滚动。
     """
     app = make_app()
 
@@ -245,13 +246,19 @@ async def test_side_panel_pins_config_box_when_content_overflows(make_app):
         await pilot.pause()
         await pilot.pause()
 
-        panel = app.side.region
-        box = app.side._config_box.region
-        assert box.height > 0
-        assert box.y + box.height <= panel.y + panel.height
+        scroll = app.side.query_one("#side-scroll")
+        # 配置框已经移进滚动容器，与上下文 / 用量一起滚
+        assert app.side._config_box in scroll.children
         # 装不下的那部分交给滚动容器，而不是被裁掉就当没有
-        assert app.side.query_one("#side-scroll").max_scroll_y > 0
+        assert scroll.max_scroll_y > 0
         assert "会话" in _side(app)
+
+        # 品牌区钉在面板底部，整块留在可视区
+        panel = app.side.region
+        brand = app.side.query_one("#side-brand")
+        assert brand.region.height > 0
+        assert brand.region.y + brand.region.height <= panel.y + panel.height
+        assert "LrmneAgent" in _plain(brand).replace(" ", "")  # 产品名字标（字母留白）
 
 
 @pytest.mark.anyio
@@ -479,29 +486,6 @@ async def test_startup_config_read_stays_out_of_transcript(make_app):
         assert not list(conv.view.children)
         assert app.side._thinking == "high"
         assert app.status._context_size == 200000
-
-
-@pytest.mark.anyio
-async def test_status_command_shows_curated_config_card(make_app):
-    app = make_app()
-
-    async with app.run_test() as pilot:
-        await pilot.pause()
-        conv = app.store.current
-        conv.view.remove_children()
-
-        await pilot.press(*"/status", "enter")
-        request_id = app.client.last("config.get").request_id
-        app._dispatch_receipt(make_receipt_success(request_id, conv.cid, CONFIG_VIEW))
-        await pilot.pause()
-
-        cards = list(conv.view.query("Card"))
-        assert len(cards) == 1
-        shown = _plain(cards[0])
-        assert "gpt-4" in shown and "200,000" in shown and "****9f3c" in shown
-        # 开发字段与明文式的键名不进用户视野
-        for noise in ("provider_type", "stream", "max_retries", "agent_home"):
-            assert noise not in shown
 
 
 @pytest.mark.anyio

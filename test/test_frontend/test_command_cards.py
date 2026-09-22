@@ -69,6 +69,47 @@ async def test_thinking_card_picks_a_level_and_confirms_in_one_line(make_app):
 
 
 @pytest.mark.anyio
+async def test_context_card_picks_a_size_and_confirms_in_one_line(make_app):
+    app = make_app()
+
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        conv = app.store.current
+        conv.view.remove_children()
+
+        await _run_command(pilot, app, "/context")
+
+        picker = app.picker_overlay
+        assert picker is not None and picker.kind == "context"
+        listing = picker.query_one("#picker-list", OptionList)
+        assert listing.option_count == 3
+
+        listing.highlighted = 2  # 1M
+        await pilot.press("enter")
+        await pilot.pause()
+
+        assert app.picker_overlay is None
+        assert app.client.last("config.set").parameters == {
+            "key": "context_size",
+            "value": 1_000_000,
+        }
+
+        # 回执带的是整个模型配置块，转录里只该出现那一句确认
+        command = app.client.last("config.set")
+        app._dispatch_receipt(
+            make_receipt_success(
+                command.request_id,
+                conv.cid,
+                {"model": "gpt-4", "context_size": 1_000_000},
+            )
+        )
+        await pilot.pause()
+
+        body = _plain(conv.view.children[-1])
+        assert "上下文窗口已设为 1M" in body
+
+
+@pytest.mark.anyio
 async def test_diff_card_is_filled_by_the_receipt_then_asks_for_the_round(make_app):
     app = make_app()
 

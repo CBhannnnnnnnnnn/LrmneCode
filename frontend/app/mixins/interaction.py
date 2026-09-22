@@ -14,15 +14,7 @@ from ...widgets import (Card, UserMessage)
 
 
 class InteractionMixin:
-    """输入侧行为：斜杠命令执行、命令面板同步、@ 提及落字、附件与状态卡片。"""
-
-    def request_status_card(self) -> None:
-        """请求在 config.get 回执到达时渲染一张配置卡片（/status 用）。"""
-        self._pending_status = True
-
-    def consume_status_card(self) -> bool:
-        requested, self._pending_status = self._pending_status, False
-        return requested
+    """输入侧行为：斜杠命令执行、命令面板同步、@ 提及落字与附件。"""
 
     @property
     def thinking_level(self) -> str:
@@ -35,6 +27,11 @@ class InteractionMixin:
     @property
     def workspace_root(self) -> str:
         return str(self.config.get("root") or "")
+
+    @property
+    def context_size(self) -> int:
+        value = self.config.get("context_size")
+        return value if isinstance(value, int) else 0
 
     def _accept_mention(self, item: Mention) -> None:
         """把正在输入的 ``@片段`` 换成选中的候选。
