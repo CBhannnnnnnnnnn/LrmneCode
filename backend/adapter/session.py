@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 from typing import Any
 
@@ -28,7 +29,6 @@ def list_sessions() -> list[dict[str, Any]]:
             except (OSError, ValueError):
                 meta["summary"] = ""
                 meta["session_id"] = ""
-            import os
             meta["modified"] = os.path.getmtime(state_path)
         result.append(meta)
     return result

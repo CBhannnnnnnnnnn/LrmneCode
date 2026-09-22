@@ -66,7 +66,7 @@ class Runtime:
                 msg.request_id,
                 msg.conversation_id,
                 ErrorCode.INTERNAL_ERROR,
-                f"在runtime中出现了未知错误{e}"
+                f"unexpected error in runtime: {e}"
             )
             await write_line(to_line(receipt))
 

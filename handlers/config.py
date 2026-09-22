@@ -27,7 +27,7 @@ class ConfigApplyModelParams(BaseModel):
 
 
 @config_register("set")
-async def config_set(params: ConfigSetParams):
+async def config_set(params: ConfigSetParams) -> dict[str, Any]:
     """写入配置。key=root 为工作区硬边界：先 cancel_all 再切换。"""
 
     if params.key == "root":
@@ -38,19 +38,19 @@ async def config_set(params: ConfigSetParams):
 
 
 @config_register("get")
-async def config_get(params: ConfigGetParams):
+async def config_get(params: ConfigGetParams) -> dict[str, Any]:
     """读取配置；key 为空返回 model / permission / workspace 三块视图。"""
     return get_config(params.key)
 
 
 @config_register("providers")
-async def config_providers(params: ConfigProvidersParams):
+async def config_providers(params: ConfigProvidersParams) -> list[dict[str, Any]]:
     """可选提供方及其字段 Schema；前端据此生成凭证表单。"""
     return list_providers()
 
 
 @config_register("apply_model")
-async def config_apply_model(params: ConfigApplyModelParams):
+async def config_apply_model(params: ConfigApplyModelParams) -> dict[str, Any]:
     """一次写入模型配置；provider_type 为空表示沿用当前提供方与凭证。"""
     return apply_model(
         model=params.model,

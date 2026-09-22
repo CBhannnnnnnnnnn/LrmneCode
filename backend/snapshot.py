@@ -4,6 +4,7 @@ import difflib
 import hashlib
 import json
 import os
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -135,6 +136,5 @@ class SnapshotManager:
         for entry in to_remove:
             r_dir = self._dir / f"r{entry['round']}"
             if r_dir.is_dir():
-                import shutil
                 shutil.rmtree(r_dir, ignore_errors=True)
         self._save_meta()
