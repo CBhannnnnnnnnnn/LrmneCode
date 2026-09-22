@@ -6,6 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "lrmne-code"
 version = "0.1.0"
 description = "LrmneCode - terminal coding agent for the current workspace"
+readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "LrmneCode" }]
