@@ -1,21 +1,44 @@
-﻿.venv/
-.vscode/
+﻿# ---------- 虚拟环境 ----------
+.venv/
+venv/
+env/
+ENV/
+
+# ---------- 编辑器 / IDE ----------
+.vscode/*
+!.vscode/extensions.json
+.idea/
 .cursor/
+
+# ---------- 工具 Agent 运行时产物（工作区级，不入库）----------
 .lrmneagent/
 .codeagent/
 
+# ---------- Python 缓存与构建产物 ----------
 __pycache__/
+*.py[cod]
 .pytest_cache/
-*.pyc
-
+.ruff_cache/
+.mypy_cache/
 *.egg-info/
+*.egg
+build/
+dist/
 
+# ---------- 测试覆盖率 ----------
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# ---------- 本地配置（可能含 API Key，绝不入库）----------
 settings.json
 
+# ---------- 操作系统杂项 ----------
+.DS_Store
+Thumbs.db
+Desktop.ini
 
-
-
-
-
+# ---------- 项目特有 ----------
 # 快照比对失败时写出的调试产物，不是基线，不入库
 test/test_frontend/snapshots/*.actual.svg
