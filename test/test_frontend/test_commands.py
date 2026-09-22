@@ -148,6 +148,7 @@ def test_find_matches_name_or_alias():
     assert find("help").name == "help"
     assert find("?").name == "help"
     assert find("resume").name == "sessions"
+    assert find("login").name == "model"  # /login 引导首次连接模型
     assert find("missing") is None
 
 

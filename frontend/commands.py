@@ -127,7 +127,7 @@ def cmd_quit(app: "LrmneAgentApp") -> None:
 # ---------- 配置：一律弹卡片，不做"命令 + 值" ----------
 
 
-@command("model", "打开模型配置窗口")
+@command("model", "打开模型配置窗口", aliases=("login",))
 def cmd_model(app: "LrmneAgentApp") -> None:
     app.open_model_config()
 

@@ -13,7 +13,7 @@ class OverlaysMixin:
     """浮窗编排：模型配置 / 会话切换 / 选择 / 单行输入的开启与关闭。"""
 
     def open_model_config(self) -> None:
-        """打开模型配置浮窗（/model 或 F2）；已在窗口内则不重复入栈。"""
+        """打开模型配置浮窗（/model 或 /login 或 F2）；已在窗口内则不重复入栈。"""
         if self.model_config_overlay is not None:
             return
         self.push_screen(ModelConfigOverlay())
