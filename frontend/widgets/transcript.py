@@ -9,7 +9,7 @@ import time
 from typing import Any
 from rich.text import Text
 from textual.app import ComposeResult
-from textual.widgets import (Collapsible, Markdown, Static)
+from textual.widgets import (Collapsible, Static)
 from ..theme import (GLYPH_HINT, GLYPH_NOTICE, GLYPH_PANEL, GLYPH_SPINNER, GLYPH_THINKING, GLYPH_USER, S_DIM, S_ERR, S_FAINT, S_OK, S_SLASH, S_TEXT, S_USER, S_WARN)
 from .base import Block, StreamMarkdown, _as_mapping, _fmt_elapsed, set_block_state
 

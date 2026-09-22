@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 from typing import Any
 from rich.text import Text
-from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.containers import (Vertical)
 from textual.widgets import (Markdown)
 
 

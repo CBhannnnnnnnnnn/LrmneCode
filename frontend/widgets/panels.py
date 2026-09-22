@@ -10,7 +10,6 @@ from rich.cells import cell_len
 from rich.text import Text
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.widgets import (Static)
-from .. import (tools)
 from ..theme import (GLYPH_ACTIVE, GLYPH_METER_EMPTY, GLYPH_METER_FULL, GLYPH_ELLIPSIS, GLYPH_NOTICE, GLYPH_QUEUED, GLYPH_SPINNER, S_ERR, S_FAINT, S_GHOST, S_OK, S_TEXT, S_WARN)
 from .base import _tail_path
 from .usage import _fmt_tokens, prompt_total

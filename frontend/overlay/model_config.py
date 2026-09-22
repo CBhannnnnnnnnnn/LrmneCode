@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import Any
 from rich.text import Text
 from textual import on
 from textual.containers import Horizontal, Vertical, VerticalScroll

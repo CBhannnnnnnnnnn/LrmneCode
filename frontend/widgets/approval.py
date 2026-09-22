@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Any
 from rich.text import Text
-from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.containers import (Horizontal, Vertical)
 from textual.message import Message
 from textual.widgets import (Button, Static)
 from .. import (tools)

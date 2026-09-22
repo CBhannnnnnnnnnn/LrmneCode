@@ -6,11 +6,11 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Callable
+from typing import Any
 from rich.text import Text
 from textual import on
 from textual.binding import Binding
-from textual.widgets import Button, Input, OptionList, Select, Static
+from textual.widgets import OptionList
 from textual.widgets.option_list import Option
 from ..theme import (GLYPH_ACTIVE, S_DIM, S_FAINT, S_LABEL, S_TEXT, S_USER, S_WARN)
 from .base import Overlay, _OPEN_PREFIX, _entry_index, _shorten

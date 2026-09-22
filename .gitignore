@@ -16,3 +16,6 @@ settings.json
 
 
 
+
+# 快照比对失败时写出的调试产物，不是基线，不入库
+test/test_frontend/snapshots/*.actual.svg

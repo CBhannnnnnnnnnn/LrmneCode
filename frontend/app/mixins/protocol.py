@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import Any
 from rich.text import Text
 from proxy_layer.schema import (EventProtocol, ReceiptProtocol, make_command, new_request_id)
 from ...commands import (OP_CHAT_SEND)

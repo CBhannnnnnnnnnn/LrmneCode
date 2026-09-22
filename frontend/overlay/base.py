@@ -6,14 +6,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.css.query import NoMatches
 from textual.screen import ModalScreen
-from textual.widgets import Button, Input, OptionList, Select, Static
+from textual.widgets import OptionList, Static
 from ..theme import (GLYPH_PANEL, S_ERR, S_FAINT, S_OK, S_TEXT, S_WARN)
 from .styles import OVERLAY_CSS
 

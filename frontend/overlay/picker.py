@@ -8,7 +8,7 @@ from __future__ import annotations
 from typing import Any, Callable
 from rich.text import Text
 from textual import on
-from textual.widgets import Button, Input, OptionList, Select, Static
+from textual.widgets import OptionList
 from textual.widgets.option_list import Option
 from ..theme import (GLYPH_ACTIVE, S_FAINT, S_TEXT, S_USER)
 from .base import Choice, Overlay

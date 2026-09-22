@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import Any
 from rich.text import Text
 from proxy_layer.schema import (PROTOCOL_VERSION, new_conversation_id)
 from ...conversation import (Conversation)

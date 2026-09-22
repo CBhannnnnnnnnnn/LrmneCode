@@ -15,7 +15,6 @@ from .. import (datablocks)
 from .. import (tools)
 from ..theme import (GLYPH_INTERRUPT, GLYPH_RESULT, GLYPH_SPINNER, S_INTERNAL, S_INTERNAL_OPEN)
 from .base import Block, _fmt_elapsed, _one_line
-from .transcript import HintBlock
 
 
 
