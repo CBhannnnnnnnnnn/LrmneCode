@@ -890,9 +890,10 @@ async def test_side_panel_keeps_usage_visible_while_a_call_is_inflight(make_app)
         await pilot.pause()
 
         # 第一次调用：没有校准基准，只报字数，不假装知道 token
-        app.send("你好")
+        app.send_chat("你好")
         await pilot.pause()
         emit("model.start", {"model_name": "m"})
+        await pilot.pause()  # 让 model.start 真的落地，否则下面改的起始时刻会被覆盖
         emit("stream.thinking.start", {"reply_id": "r1", "block_id": "t1"})
         emit("stream.thinking", {"reply_id": "r1", "block_id": "t1", "text_delta": "先想一段够用的内容。"})
         await tick(pilot)
@@ -908,9 +909,10 @@ async def test_side_panel_keeps_usage_visible_while_a_call_is_inflight(make_app)
         assert any("↑" in r for r in _metric_rows(app))
 
         # 第二次调用：用上一次实测的每字量折算，中途就给估算 token
-        app.send("再来")
+        app.send_chat("再来")
         await pilot.pause()
         emit("model.start", {"model_name": "m"})
+        await pilot.pause()  # 让 model.start 真的落地，否则下面改的起始时刻会被覆盖
         emit("stream.thinking.start", {"reply_id": "r2", "block_id": "t2"})
         emit("stream.thinking", {"reply_id": "r2", "block_id": "t2", "text_delta": "又想到一些内容。"})
         app.store.current.call_started -= 2.0  # 让吞吐这一行真的凑得出来
