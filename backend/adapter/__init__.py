@@ -9,6 +9,7 @@ from .config import (
     set_config,
     switch_workspace,
 )
+from .diff import diff_list, diff_show, diff_undo
 from .inventory import list_mcp_servers, list_skills
 from .session import delete_session, list_sessions, resume_session
 from .translate import translate
@@ -27,4 +28,7 @@ __all__ = [
     "respond_approval",
     "list_skills",
     "list_mcp_servers",
+    "diff_show",
+    "diff_undo",
+    "diff_list",
 ]
