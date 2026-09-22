@@ -143,7 +143,9 @@ class ModelConfigOverlay(Overlay):
         flat = self._current
         if flat.get("thinking_level") in THINKING_LEVELS:
             self.query_one("#thinking-level", Select).value = flat["thinking_level"]
-        if isinstance(flat.get("context_size"), int):
+        # 只回填本浮窗列出的档位：/context 可设 400k / 1M，而这里没有该选项，
+        # 直接赋值会触发 Select 的 InvalidSelectValueError，故不认识的档位保持「不改动」
+        if flat.get("context_size") in CONTEXT_SIZES:
             self.query_one("#context-size", Select).value = flat["context_size"]
 
     # ---------- 提供方列表 ----------

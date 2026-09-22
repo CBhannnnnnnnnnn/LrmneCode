@@ -49,10 +49,10 @@ def _empty_settings() -> dict[str, Any]:
         "provider_type": None,
         "credential": {},
         "model": None,
-        "thinking_level": "off",
+        "thinking_level": "medium",
         "stream": True,
         "max_retries": 3,
-        "context_size": 32768,
+        "context_size": 200_000,
     }
 
 

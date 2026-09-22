@@ -59,6 +59,30 @@ async def _open(app, pilot):
 
 
 @pytest.mark.anyio
+async def test_context_size_outside_listed_options_does_not_crash(make_app):
+    """/context 设成 400k / 1M 后 /model 回填表单不应崩：Select 只认识列表内的档位。"""
+    app = make_app()
+
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        conv = await _open(app, pilot)
+        show_providers(app, conv, PROVIDERS)
+        await pilot.pause()
+
+        overlay = app.model_config_overlay
+        assert overlay is not None
+
+        # 列表内的档位正常回填
+        overlay.load_config({"context_size": 200_000})
+        await pilot.pause()
+        assert overlay.query_one("#context-size", Select).value == 200_000
+
+        # 列表外的档位（/context 的 1M）安全跳过，而不是抛 InvalidSelectValueError
+        overlay.load_config({"context_size": 1_000_000})
+        await pilot.pause()
+
+
+@pytest.mark.anyio
 async def test_opening_window_pulls_providers_and_config(make_app):
     app = make_app()
 

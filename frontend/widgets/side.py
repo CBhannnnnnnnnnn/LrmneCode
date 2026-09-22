@@ -265,8 +265,8 @@ class SidePanel(Vertical):
 
     def _config_section(self) -> tuple[str, list[Text]]:
         rows = [
-            # 没读到配置时按引擎默认值显示，不留一串看不懂的破折号
-            self._row("思考", self._thinking or "off"),
+            # 没读到配置时按系统默认档显示（思考 medium、权限 default），不留一串看不懂的破折号
+            self._row("思考", self._thinking or "medium"),
             self._row("权限", self._permission or "default"),
         ]
         root = _tail_path(self._root)
