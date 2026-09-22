@@ -20,8 +20,6 @@ from ..commands import (SlashCommand)
 from ..theme import (GLYPH_PANEL, S_DIM, S_FAINT, S_GHOST, S_REFERENCE, S_TEXT)
 
 
-
-
 class InputArea(TextArea):
     """底部输入框：Enter 发送，Tab 补全/插入；面板可见时 ↑/↓ 导航。
 

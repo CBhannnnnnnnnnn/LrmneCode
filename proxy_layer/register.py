@@ -6,11 +6,11 @@ from pydantic import BaseModel
 from .schema import CommandMode
 
 
-class Operation(TypedDict): 
-    handler : Callable
-    params_model : Type[BaseModel]
+class Operation(TypedDict):
+    handler: Callable
+    params_model: Type[BaseModel]
     is_async: bool
-    mode : CommandMode
+    mode: CommandMode
 
 _registry: dict[str, dict[str, Operation]] = {}
 
@@ -23,9 +23,9 @@ def register_command(namespace: str, operation: str, mode: CommandMode):
 
     def decorator(func: Callable):
 
-        ope : Operation = {}
+        ope: Operation = {}
 
-        if not mode in [m for m in CommandMode]:
+        if mode not in [m for m in CommandMode]:
             raise TypeError("传入的mode参数必须是'CommandMode'类型的")
 
         ope["mode"] = mode
@@ -41,7 +41,7 @@ def register_command(namespace: str, operation: str, mode: CommandMode):
             raise TypeError("被注册的函数只能接受一个参数")
 
         elif not params_model.get("params"):
-            raise TypeError("被注册的函数期望接受的参数名称为 'params' ")
+            raise TypeError("被注册的函数期望接受的参数名称为 'params'")
 
         elif not issubclass(params_model.get("params"), BaseModel):
             raise TypeError("params 应该是 BaseModel 的子类")

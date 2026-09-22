@@ -73,7 +73,7 @@ class ReceiptProtocol(BaseProtocol):
     """
 
     message_type: Literal[MessageType.RECEIPT] = MessageType.RECEIPT
-    request_id: str | None 
+    request_id: str | None
     accepted: bool
     error_code: ErrorCode | None = None
     error_message: str | None = None
@@ -93,7 +93,6 @@ class ReceiptProtocol(BaseProtocol):
             if self.result is not None:
                 raise ValueError("accepted=False 的回执不得携带 result")
         return self
-
 
 
 Message = Annotated[

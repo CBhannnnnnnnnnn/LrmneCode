@@ -6,8 +6,6 @@
 from __future__ import annotations
 
 
-
-
 # 浮窗样式随部件走（Textual 会收集部件类的 CSS，含继承），主题变量仍取自 theme
 OVERLAY_CSS = """
 Overlay {

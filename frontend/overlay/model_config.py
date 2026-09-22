@@ -15,7 +15,6 @@ from ..theme import (S_DIM, S_FAINT, S_TEXT)
 from .base import Overlay
 
 
-
 THINKING_LEVELS: tuple[str, ...] = ("off", "low", "medium", "high")
 CONTEXT_SIZES: tuple[int, ...] = (8192, 32768, 65536, 131072, 200_000)
 

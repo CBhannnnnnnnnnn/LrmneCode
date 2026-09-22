@@ -13,8 +13,6 @@ from ..theme import (S_DIM)
 from .base import Overlay
 
 
-
-
 class Prompt(Overlay):
     """单行输入浮窗：路径这类自由文本用它，替代「/命令 参数」的写法。"""
 

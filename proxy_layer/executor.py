@@ -14,6 +14,7 @@ from pydantic import ValidationError
 from typing import AsyncGenerator
 from proxy_layer.session import conversation_id_var
 
+
 class Executor:
     """按 handler 类型执行已注册操作，不负责排队与取消。
 
@@ -64,7 +65,7 @@ class Executor:
 
                 async def _stream():
                     for chunk in handler(validated):
-                        yield chunk    
+                        yield chunk
                 result = _stream()
             else:
                 result = handler(validated)
@@ -81,7 +82,7 @@ class Executor:
                     {"stop_reason": "interrupted", "request_id": request_id},
                 )
                 raise
-            
+
             except Exception as e:
                 yield make_event(
                     conversation_id,
@@ -89,7 +90,7 @@ class Executor:
                     {"stop_reason": "error", "error": str(e), "request_id": request_id},
                 )
                 return
-            
+
             yield make_event(
                 conversation_id,
                 "run.finished",

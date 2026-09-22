@@ -17,8 +17,6 @@ from ..theme import (GLYPH_INTERRUPT, GLYPH_RESULT, GLYPH_SPINNER, S_INTERNAL, S
 from .base import Block, _fmt_elapsed, _one_line
 
 
-
-
 class ToolCallView(Block):
     """工具调用：一次调用就是一块——标题只写「哪个工具」，框内第一行写「在干什么」。
 

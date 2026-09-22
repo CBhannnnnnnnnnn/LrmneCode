@@ -14,8 +14,6 @@ from ..theme import (GLYPH_ACTIVE, S_FAINT, S_TEXT, S_USER)
 from .base import Choice, Overlay
 
 
-
-
 class Picker(Overlay):
     """选择浮窗：↑↓ 挑一项，回车确认。
 

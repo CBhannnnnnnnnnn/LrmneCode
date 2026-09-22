@@ -15,8 +15,6 @@ from ..theme import (GLYPH_PANEL, GLYPH_TOOL, S_ERR, S_OK)
 from .tool_view import _call_parts, diff_fold
 
 
-
-
 class ApprovalPanel(Vertical):
     """审批请求面板：聚焦后按 y / n / a，或点击三个按钮。
 

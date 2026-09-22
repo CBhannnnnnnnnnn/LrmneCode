@@ -83,7 +83,6 @@ async def stream_chat(text: str, attachments: list[dict] | None = None) -> Async
 
                     fut: asyncio.Future[UserConfirmResultEvent] = (
                         loop.create_future()
-
                     )
                     _state._pending_approvals[event.reply_id] = (event, fut)
 

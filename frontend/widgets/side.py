@@ -14,7 +14,6 @@ from .base import _tail_path
 from .usage import _fmt_tokens, prompt_total
 
 
-
 # 上下文压力表的格子数：4 格足够看出「还早 / 过半 / 快满」
 _METER_CELLS = 4
 

@@ -3,7 +3,7 @@
 import json
 import os
 from pathlib import Path
-from typing import Any,List
+from typing import Any, List
 
 from agentscope.permission import AdditionalWorkingDirectory
 from agentscope.state import AgentState
@@ -21,12 +21,11 @@ class ProjectLocalWorkspace(LocalWorkspace):
     """workdir 落在 .lrmneagent；工具 cwd 绑到项目源码根，而非 agent home。"""
 
     def __init__(self, project_root: str, **kwargs: Any):
-
-        self.project_root = os.path.abspath(project_root) 
+        self.project_root = os.path.abspath(project_root)
         agent_home = os.path.join(self.project_root, AGENT_HOME_NAME)
 
         super().__init__(workdir=agent_home, **kwargs)
-        
+
         self.instructions = (
             f"<workspace>Project source root: {self.project_root}\n"
             f"Agent home (skills/mcp/sessions): {agent_home}\n"
@@ -38,11 +37,11 @@ class ProjectLocalWorkspace(LocalWorkspace):
     async def list_tools(self) -> List[ToolBase]:
         """覆盖默认 list_tools：shell/读写工具的工作目录指向 project_root。"""
 
-        backend = self.get_backend() 
+        backend = self.get_backend()
 
-        if os.name == "nt":                         
+        if os.name == "nt":
             shell = PowerShell(cwd=self.project_root, backend=backend)
-        else:         
+        else:
             shell = Bash(cwd=self.project_root, backend=backend)
 
         glob_kwargs = {"backend": backend}
@@ -57,7 +56,6 @@ class SessionManager:
     """按 conversation_id（cid）持久化 AgentState，并缓存进程内 live agent。"""
 
     def __init__(self, agent_home: str):
-        
         self._dir = Path(agent_home) / SESSIONS_DIR
         self._agents: dict[str, Agent] = {}
 
@@ -81,7 +79,7 @@ class SessionManager:
             json.dumps(state.model_dump(mode="json"), ensure_ascii=False),
             encoding="utf-8",
         )
-    
+
     def get(self, cid: str) -> Agent | None:
         return self._agents.get(cid)
 
@@ -98,7 +96,6 @@ class SessionManager:
 class WorkspaceManager:
 
     def __init__(self, project_root: str | None = None):
-
         if project_root is None:
             project_root = os.getcwd()
 
@@ -106,26 +103,21 @@ class WorkspaceManager:
         self.project_root = path
         self.agent_home = os.path.join(self.project_root, AGENT_HOME_NAME)
 
-
         os.makedirs(self.agent_home, exist_ok=True)
-        
+
         # WorkspaceBase.initialize 需 await，同步 __init__ 里只能先占位
         self.session_manager = SessionManager(self.agent_home)
         self._workspace: WorkspaceBase | None = None
 
         self._toolkit: Toolkit | None = None
 
-
     async def ensure_workspace(self) -> tuple[WorkspaceBase, Toolkit]:
-        
         if self._workspace is None or not self._workspace.is_alive:
             await self._build_workspace()
-        
+
         return self._workspace, self._toolkit
 
-
     async def close_workspace(self) -> None:
-        
         ws = self._workspace
         if ws is None:
             return
@@ -136,9 +128,7 @@ class WorkspaceManager:
         self._workspace = None
         self._toolkit = None
 
-
     async def _build_workspace(self) -> None:
-
         await self.close_workspace()
         ws = ProjectLocalWorkspace(self.project_root)
 
@@ -147,8 +137,11 @@ class WorkspaceManager:
         ws.is_alive = True
 
         self._workspace = ws
-        self._toolkit = Toolkit(tools=await ws.list_tools(), 
-                                skills_or_loaders=await ws.list_skills(),mcps=await ws.list_mcps())
+        self._toolkit = Toolkit(
+            tools=await ws.list_tools(),
+            skills_or_loaders=await ws.list_skills(),
+            mcps=await ws.list_mcps(),
+        )
 
     def mount_directories(self, agent: Agent) -> None:
         context = agent.state.permission_context

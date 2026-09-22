@@ -8,7 +8,6 @@ def respond_approval(
     approval_request_id: str,
     approved: bool,
     always: bool = False,
-
 ) -> dict[str, Any]:
     """解挂 ``stream_chat`` 中等待的审批；无挂起或已解挂则报错。
 

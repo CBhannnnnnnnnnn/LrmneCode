@@ -13,5 +13,8 @@ class ApprovalRespondParams(BaseModel):
 @approval_register("respond")
 async def approval_respond(params: ApprovalRespondParams) -> dict[str, Any]:
     """解挂 chat.send 中等待的工具审批；``always`` 一并记住这类放行。"""
-    return respond_approval(params.approval_request_id, 
-                        params.approved, params.always)
+    return respond_approval(
+        params.approval_request_id,
+        params.approved,
+        params.always,
+    )

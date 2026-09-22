@@ -31,9 +31,11 @@ You are LrmneAgent, a coding assistant that works inside the user's project work
 用中文进行回答
 """
 
+
 def get_name() -> str:
     """Agent 显示名。"""
     return NAME
+
 
 def get_system_prompt() -> str:
     """开发者侧系统提示词原文。"""

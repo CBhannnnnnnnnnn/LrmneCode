@@ -28,7 +28,7 @@ class Runtime:
         while True:
 
             line = await read_line()
-            if line is None:  
+            if line is None:
                 break
             if line == "":
                 continue
@@ -75,7 +75,7 @@ class Runtime:
 
         if isinstance(chunk, BaseProtocol):
             return chunk
-        
+
         if isinstance(chunk, dict):
             return make_event(conversation_id, chunk["event"], chunk.get("data", {}))
         raise TypeError(f"无法包装的产出类型: {type(chunk).__name__}")

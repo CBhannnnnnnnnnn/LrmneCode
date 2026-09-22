@@ -14,7 +14,6 @@ from .base import _tail_path
 from .usage import prompt_total
 
 
-
 # 上下文压力表的格子数：4 格足够看出「还早 / 过半 / 快满」
 _METER_CELLS = 4
 
@@ -23,7 +22,6 @@ _SEPARATOR = "  │  "
 _SEP_WIDTH = cell_len(_SEPARATOR)
 # 被裁掉时补的省略号（含前面的空格）
 _TAIL_WIDTH = cell_len(f" {GLYPH_ELLIPSIS}")
-
 
 
 class StatusBar(Horizontal):

@@ -12,8 +12,6 @@ from textual.containers import (Vertical)
 from textual.widgets import (Markdown)
 
 
-
-
 def _tail_path(path: str, depth: int = 2) -> str:
     """只留路径末尾几段：状态栏一行里放不下完整路径，尾段才是用户认得的部分。"""
     parts = [part for part in path.replace("\\", "/").split("/") if part]

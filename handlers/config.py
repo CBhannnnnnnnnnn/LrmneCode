@@ -25,7 +25,6 @@ class ConfigApplyModelParams(BaseModel):
     context_size: int | None = None
 
 
-
 @config_register("set")
 async def config_set(params: ConfigSetParams) -> dict[str, Any]:
     """写入配置。key=root 为工作区硬边界：先 cancel_all 再切换。"""

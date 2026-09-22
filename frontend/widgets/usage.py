@@ -6,9 +6,6 @@
 from __future__ import annotations
 
 
-
-
-
 def _fmt_tokens(value: int) -> str:
     """token 数：一千以内原样，往上折成 k（状态栏与右侧栏同一套读法）。"""
     if value >= 1000:
