@@ -16,7 +16,7 @@ def _get_snapshot() -> SnapshotManager:
     """按当前会话取快照管理器；工作区取自 _state，避免切换后指向旧单例。"""
     cid = conversation_id_var.get() or "c-local"
     return SnapshotManager(
-        _state.workspace_manager.agent_home,
+        _state.workspace_manager.code_home,
         cid,
         _state.workspace_manager.project_root,
     )

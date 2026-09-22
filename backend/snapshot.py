@@ -19,8 +19,8 @@ SKIP_DIRS = {
 class SnapshotManager:
     """按 conversation 轮次快照项目文本文件，供 diff/undo；跳过二进制与 SKIP_DIRS。"""
 
-    def __init__(self, agent_home: str, cid: str, project_root: str = ""):
-        self._dir = Path(agent_home) / "snapshots" / cid
+    def __init__(self, code_home: str, cid: str, project_root: str = ""):
+        self._dir = Path(code_home) / "snapshots" / cid
         self._meta_path = self._dir / "meta.json"
         self._project_root = os.path.abspath(project_root) if project_root else ""
         self._round = 0

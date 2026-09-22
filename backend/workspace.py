@@ -13,24 +13,24 @@ from agentscope.workspace import LocalWorkspace, WorkspaceBase
 from agentscope.agent import Agent
 
 
-AGENT_HOME_NAME = ".lrmnecode"
+CODE_HOME_NAME = ".lrmnecode"
 SESSIONS_DIR = "sessions"
 
 
 class ProjectLocalWorkspace(LocalWorkspace):
-    """workdir 落在 .lrmnecode；工具 cwd 绑到项目源码根，而非 agent home。"""
+    """workdir 落在 .lrmnecode；工具 cwd 绑到项目源码根，而非工具自己的 home。"""
 
     def __init__(self, project_root: str, **kwargs: Any):
         self.project_root = os.path.abspath(project_root)
-        agent_home = os.path.join(self.project_root, AGENT_HOME_NAME)
+        code_home = os.path.join(self.project_root, CODE_HOME_NAME)
 
-        super().__init__(workdir=agent_home, **kwargs)
+        super().__init__(workdir=code_home, **kwargs)
 
         self.instructions = (
             f"<workspace>Project source root: {self.project_root}\n"
-            f"Agent home (skills/mcp/sessions): {agent_home}\n"
+            f"Agent home (skills/mcp/sessions): {code_home}\n"
             f"Edit and run commands against the project source root. "
-            f"Treat {agent_home} as product metadata, not application code."
+            f"Treat {code_home} as product metadata, not application code."
             f"</workspace>"
         )
 
@@ -55,8 +55,8 @@ class ProjectLocalWorkspace(LocalWorkspace):
 class SessionManager:
     """按 conversation_id（cid）持久化 AgentState，并缓存进程内 live agent。"""
 
-    def __init__(self, agent_home: str):
-        self._dir = Path(agent_home) / SESSIONS_DIR
+    def __init__(self, code_home: str):
+        self._dir = Path(code_home) / SESSIONS_DIR
         self._agents: dict[str, Agent] = {}
 
     def _state_path(self, cid: str) -> Path:
@@ -101,12 +101,12 @@ class WorkspaceManager:
 
         path = os.path.abspath(os.path.expanduser(project_root.strip()))
         self.project_root = path
-        self.agent_home = os.path.join(self.project_root, AGENT_HOME_NAME)
+        self.code_home = os.path.join(self.project_root, CODE_HOME_NAME)
 
-        os.makedirs(self.agent_home, exist_ok=True)
+        os.makedirs(self.code_home, exist_ok=True)
 
         # WorkspaceBase.initialize 需 await，同步 __init__ 里只能先占位
-        self.session_manager = SessionManager(self.agent_home)
+        self.session_manager = SessionManager(self.code_home)
         self._workspace: WorkspaceBase | None = None
 
         self._toolkit: Toolkit | None = None

@@ -38,7 +38,7 @@ async def stream_chat(text: str, attachments: list[dict] | None = None) -> Async
         session.bind(cid, agent)
 
     snapshot = SnapshotManager(
-        _state.workspace_manager.agent_home,
+        _state.workspace_manager.code_home,
         cid,
         _state.workspace_manager.project_root,
     )

@@ -28,7 +28,7 @@ def get_config(key: str | None = None) -> dict[str, Any]:
         "permission": permission_config.get(),
         "workspace": {
             "root": _state.workspace_manager.project_root,
-            "agent_home": _state.workspace_manager.agent_home,
+            "agent_home": _state.workspace_manager.code_home,
         },
     }
 
@@ -98,5 +98,5 @@ async def switch_workspace(root: str) -> dict[str, Any]:
     await old.close_workspace()
     return {
         "root": new_ws.project_root,
-        "agent_home": new_ws.agent_home,
+        "agent_home": new_ws.code_home,
     }
