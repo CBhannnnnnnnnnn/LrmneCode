@@ -258,7 +258,7 @@ async def test_side_panel_scrolls_config_and_keeps_brand_at_bottom(make_app):
         brand = app.side.query_one("#side-brand")
         assert brand.region.height > 0
         assert brand.region.y + brand.region.height <= panel.y + panel.height
-        assert "LrmneAgent" in _plain(brand).replace(" ", "")  # 产品名字标（字母留白）
+        assert "LrmneCode" in _plain(brand).replace(" ", "")  # 产品名字标（字母留白）
 
 
 @pytest.mark.anyio
@@ -465,7 +465,7 @@ CONFIG_VIEW = {
         "context_size": 200000,
     },
     "permission": {"mode": "default"},
-    "workspace": {"root": "D:/code/LrmneAgent", "agent_home": "D:/code/LrmneAgent/.lrmne"},
+    "workspace": {"root": "D:/code/LrmneCode", "agent_home": "D:/code/LrmneCode/.lrmnecode"},
 }
 
 

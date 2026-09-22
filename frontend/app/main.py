@@ -34,8 +34,8 @@ from .params import STREAM_FLUSH_INTERVAL
 from .styles import APP_CSS
 
 
-class LrmneAgentApp(SessionsMixin, ProtocolMixin, InteractionMixin, MentionsMixin, OverlaysMixin, ApprovalMixin, App):
-    TITLE = "LrmneAgent"
+class LrmneCodeApp(SessionsMixin, ProtocolMixin, InteractionMixin, MentionsMixin, OverlaysMixin, ApprovalMixin, App):
+    TITLE = "LrmneCode"
     SUB_TITLE = "coding agent"
 
     BINDINGS = [

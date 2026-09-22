@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from frontend.app import LrmneAgentApp
+from frontend.app import LrmneCodeApp
 
 FRONTEND = Path(__file__).parents[2] / "frontend"
 MAX_LINES = 400
@@ -37,9 +37,9 @@ def test_app_class_still_owns_its_on_handlers():
     Textual 的 `_MessagePumpMeta` 只从类**自身**的 `__dict__` 收集装饰过的处理器，
     mixin 里的一律静默不注册——搬走不会有报错，只有"点了没反应"。
     """
-    collected = getattr(LrmneAgentApp, "_decorated_handlers", {})
+    collected = getattr(LrmneCodeApp, "_decorated_handlers", {})
     kinds = {key.__name__ for key in collected}
     assert {"Submitted", "TabPressed", "PaletteNavigate", "Changed", "Decision",
             "OptionSelected"} <= kinds, f"@on 入口被搬离 App 类，只剩 {kinds}"
-    keys = {b.key for b in LrmneAgentApp.BINDINGS}
+    keys = {b.key for b in LrmneCodeApp.BINDINGS}
     assert {"escape", "f2", "f3", "ctrl+q"} <= keys, f"键位丢失：{keys}"

@@ -34,7 +34,7 @@ def clean_scheduler():
 
 @pytest.fixture
 def settings_file(tmp_path, monkeypatch):
-    """把模型配置的落盘位置改到 tmp，避免污染用户的 ~/.lrmneagent。"""
+    """把模型配置的落盘位置改到 tmp，避免污染用户的 ~/.lrmnecode。"""
     from backend.user import model as model_module
 
     monkeypatch.setattr(model_module, "_GLOBAL_HOME", tmp_path)

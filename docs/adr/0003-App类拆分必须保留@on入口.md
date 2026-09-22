@@ -1,6 +1,6 @@
 # App 类不用纯 mixin 拆分，`@on` 入口必须留在类自身
 
-治理 `frontend/app.py` 时想把 `LrmneAgentApp`（71 个方法）按职责拆进若干 mixin。
+治理 `frontend/app.py` 时想把 `LrmneCodeApp`（71 个方法）按职责拆进若干 mixin。
 实测（Textual 8.2.8）与源码确认：**普通 mixin 里的 `@on(...)` 装饰处理器永不触发**。
 
 `textual/message_pump.py:75-95` 的 `_MessagePumpMeta.__new__` 只从 `class_dict`（类**自身**的字典）

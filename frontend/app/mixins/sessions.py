@@ -142,7 +142,7 @@ class SessionsMixin:
         body.append("暂停    ", style=S_FAINT)
         body.append("Ctrl+Q ", style=S_FAINT)
         body.append("退出", style=S_FAINT)
-        conv.view.add(Card("LrmneAgent", body))
+        conv.view.add(Card("LrmneCode", body))
 
     def new_conversation(self) -> None:
         cid = new_conversation_id()

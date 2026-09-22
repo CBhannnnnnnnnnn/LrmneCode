@@ -3,12 +3,12 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "lrmne-agent"
+name = "lrmne-code"
 version = "0.1.0"
-description = "LrmneAgent - terminal coding agent for the current workspace"
+description = "LrmneCode - terminal coding agent for the current workspace"
 requires-python = ">=3.11"
 license = { text = "MIT" }
-authors = [{ name = "LrmneAgent" }]
+authors = [{ name = "LrmneCode" }]
 dependencies = [
     "agentscope>=2.0.7",
     "pydantic>=2.0",
@@ -19,7 +19,7 @@ dependencies = [
 dev = ["pytest>=8.0"]
 
 [project.scripts]
-lrmneagent = "frontend.__main__:main"
+lrmnecode = "frontend.__main__:main"
 
 [tool.setuptools.packages.find]
 include = ["frontend*", "backend*", "handlers*", "proxy_layer*"]

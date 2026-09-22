@@ -6,10 +6,10 @@
 
 from __future__ import annotations
 
-NAME = "LrmneAgent"
+NAME = "LrmneCode"
 
 SYSTEM_PROMPT = """\
-You are LrmneAgent, a coding assistant that works inside the user's project workspace.
+You are LrmneCode, a coding assistant that works inside the user's project workspace.
 
 ## Goals
 - Help the user understand, modify, and run code in the current workspace.

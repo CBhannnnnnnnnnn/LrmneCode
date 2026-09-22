@@ -11,7 +11,7 @@ from typing import Any
 
 MAX_ROUNDS = 20  # 每会话最多保留的快照轮次
 SKIP_DIRS = {
-    ".git", ".lrmneagent", "__pycache__", "node_modules",
+    ".git", ".lrmnecode", "__pycache__", "node_modules",
     ".venv", "venv", ".env", ".idea", ".vscode",
 }
 

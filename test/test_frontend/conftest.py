@@ -58,7 +58,7 @@ def make_app(monkeypatch):
     monkeypatch.setattr(app_main, "BackendClient", FakeClient)
 
     def factory():
-        return app_module.LrmneAgentApp()
+        return app_module.LrmneCodeApp()
 
     return factory
 

@@ -1,4 +1,4 @@
-﻿"""入口：``lrmneagent`` 或 ``python -m frontend``。"""
+﻿"""入口：``lrmnecode`` 或 ``python -m frontend``。"""
 
 from __future__ import annotations
 
@@ -6,10 +6,10 @@ import argparse
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as dist_version
 
-from .app import LrmneAgentApp
+from .app import LrmneCodeApp
 
-# 分发名（pyproject 的 project.name），与命令名 lrmneagent 不同
-DIST_NAME = "lrmne-agent"
+# 分发名（pyproject 的 project.name），与命令名 lrmnecode 不同
+DIST_NAME = "lrmne-code"
 
 
 def _version() -> str:
@@ -23,16 +23,16 @@ def _version() -> str:
 def main() -> None:
     """命令行入口：``--version`` 打印版本并退出，否则启动 TUI。"""
     parser = argparse.ArgumentParser(
-        prog="lrmneagent",
-        description="LrmneAgent —— 终端编码智能体",
+        prog="lrmnecode",
+        description="LrmneCode —— 终端编码智能体",
     )
     parser.add_argument(
         "--version",
         action="version",
-        version=f"lrmneagent {_version()}",
+        version=f"lrmnecode {_version()}",
     )
     parser.parse_args()
-    LrmneAgentApp().run()
+    LrmneCodeApp().run()
 
 
 if __name__ == "__main__":

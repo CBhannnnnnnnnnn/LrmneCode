@@ -27,7 +27,7 @@ _TAIL_WIDTH = cell_len(f" {GLYPH_ELLIPSIS}")
 def _brand_mark() -> Text:
     """侧栏底部的品牌字：产品名（加粗、字母留白）+ 副标题，弱色不抢正文。"""
     mark = Text()
-    mark.append(" ".join("LrmneAgent") + "\n", style=S_USER)
+    mark.append(" ".join("LrmneCode") + "\n", style=S_USER)
     mark.append("coding agent", style=S_FAINT)
     return mark
 

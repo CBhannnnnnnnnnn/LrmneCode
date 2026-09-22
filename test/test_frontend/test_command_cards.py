@@ -200,7 +200,7 @@ async def test_cwd_prompt_prefills_the_root_from_the_config_cache(make_app):
             make_receipt_success(
                 app.client.last("config.get").request_id,
                 conv.cid,
-                {"workspace": {"root": "D:/code/demo", "agent_home": "D:/code/demo/.lrmne"}},
+                {"workspace": {"root": "D:/code/demo", "agent_home": "D:/code/demo/.lrmnecode"}},
             )
         )
         await pilot.pause()

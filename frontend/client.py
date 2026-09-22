@@ -109,7 +109,7 @@ class BackendClient:
         ).rstrip(os.pathsep)
 
         # cwd 用启动时所在目录，不用源码根。
-        # WorkspaceManager 在导入时以 os.getcwd() 为项目根并创建 .lrmneagent；
+        # WorkspaceManager 在导入时以 os.getcwd() 为项目根并创建 .lrmnecode；
         # 导入靠上面的 PYTHONPATH，不依赖 cwd。
         self._proc = await asyncio.create_subprocess_exec(
             sys.executable,

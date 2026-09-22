@@ -35,7 +35,7 @@ def test_root_key_cancels_before_switching_workspace(monkeypatch):
 
     async def switch_workspace(root):
         order.append(("switch", root))
-        return {"root": root, "agent_home": root + "/.lrmneagent"}
+        return {"root": root, "agent_home": root + "/.lrmnecode"}
 
     monkeypatch.setattr(config_handlers, "switch_workspace", switch_workspace)
 

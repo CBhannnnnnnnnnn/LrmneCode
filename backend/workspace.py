@@ -13,12 +13,12 @@ from agentscope.workspace import LocalWorkspace, WorkspaceBase
 from agentscope.agent import Agent
 
 
-AGENT_HOME_NAME = ".lrmneagent"
+AGENT_HOME_NAME = ".lrmnecode"
 SESSIONS_DIR = "sessions"
 
 
 class ProjectLocalWorkspace(LocalWorkspace):
-    """workdir 落在 .lrmneagent；工具 cwd 绑到项目源码根，而非 agent home。"""
+    """workdir 落在 .lrmnecode；工具 cwd 绑到项目源码根，而非 agent home。"""
 
     def __init__(self, project_root: str, **kwargs: Any):
         self.project_root = os.path.abspath(project_root)

@@ -10,14 +10,14 @@ from frontend.__main__ import main
 
 
 def test_version_flag_prints_and_exits(monkeypatch, capsys):
-    """装完之后用 `lrmneagent --version` 验证安装，不该进入界面。"""
-    monkeypatch.setattr(sys, "argv", ["lrmneagent", "--version"])
+    """装完之后用 `lrmnecode --version` 验证安装，不该进入界面。"""
+    monkeypatch.setattr(sys, "argv", ["lrmnecode", "--version"])
 
     with pytest.raises(SystemExit) as excinfo:
         main()
 
     assert excinfo.value.code == 0
-    assert capsys.readouterr().out.strip() == f"lrmneagent {entry._version()}"
+    assert capsys.readouterr().out.strip() == f"lrmnecode {entry._version()}"
 
 
 def test_version_falls_back_when_not_installed(monkeypatch):

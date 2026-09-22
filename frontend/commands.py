@@ -2,7 +2,7 @@
 
 约定：
 - 以 ``/`` 开头的输入不发给 chat.send，而是先解析成命令；
-- 每个命令的处理器通过传入的 ``app``（LrmneAgentApp）发协议命令或做本地动作；
+- 每个命令的处理器通过传入的 ``app``（LrmneCodeApp）发协议命令或做本地动作；
 - **命令一律不带参数**。要在几个取值里挑一个就弹 ``Picker``，要自由文本就弹
   ``Prompt``（见 ``overlay``）。``/config key value`` 这类"命令 + 配置"的写法
   不对用户暴露：取值域、当前值和是否合法都由候选卡片兜住。
@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Callable
 from .overlay import THINKING_LEVELS, Choice
 
 if TYPE_CHECKING:
-    from .app import LrmneAgentApp
+    from .app import LrmneCodeApp
 
 
 # 普通文本输入走 chat.send；若后端日后改名只改这里
@@ -57,14 +57,14 @@ class SlashCommand:
     name: str
     description: str
     aliases: tuple[str, ...] = ()
-    handler: Callable[["LrmneAgentApp"], None] | None = None
+    handler: Callable[["LrmneCodeApp"], None] | None = None
 
 
 COMMANDS: list[SlashCommand] = []
 
 
 def command(name: str, description: str, aliases: tuple[str, ...] = ()):
-    def decorator(fn: Callable[["LrmneAgentApp"], None]):
+    def decorator(fn: Callable[["LrmneCodeApp"], None]):
         COMMANDS.append(SlashCommand(name, description, aliases, fn))
         return fn
 
@@ -105,22 +105,22 @@ def match_prefix(prefix: str) -> list[SlashCommand]:
 
 
 @command("help", "显示所有可用命令", aliases=("?",))
-def cmd_help(app: "LrmneAgentApp") -> None:
+def cmd_help(app: "LrmneCodeApp") -> None:
     app.show_command_help()
 
 
 @command("clear", "清空当前会话的显示", aliases=("reset",))
-def cmd_clear(app: "LrmneAgentApp") -> None:
+def cmd_clear(app: "LrmneCodeApp") -> None:
     app.clear_transcript()
 
 
 @command("new", "开新对话", aliases=("new-chat",))
-def cmd_new(app: "LrmneAgentApp") -> None:
+def cmd_new(app: "LrmneCodeApp") -> None:
     app.new_conversation()
 
 
-@command("quit", "退出 LrmneAgent", aliases=("exit",))
-def cmd_quit(app: "LrmneAgentApp") -> None:
+@command("quit", "退出 LrmneCode", aliases=("exit",))
+def cmd_quit(app: "LrmneCodeApp") -> None:
     app.exit()
 
 
@@ -128,12 +128,12 @@ def cmd_quit(app: "LrmneAgentApp") -> None:
 
 
 @command("model", "打开模型配置窗口", aliases=("login",))
-def cmd_model(app: "LrmneAgentApp") -> None:
+def cmd_model(app: "LrmneCodeApp") -> None:
     app.open_model_config()
 
 
 @command("thinking", "选择思考级别")
-def cmd_thinking(app: "LrmneAgentApp") -> None:
+def cmd_thinking(app: "LrmneCodeApp") -> None:
     app.open_picker(
         "thinking",
         "思考级别",
@@ -149,7 +149,7 @@ def cmd_thinking(app: "LrmneAgentApp") -> None:
 
 
 @command("permission", "选择权限模式", aliases=("perm",))
-def cmd_permission(app: "LrmneAgentApp") -> None:
+def cmd_permission(app: "LrmneCodeApp") -> None:
     app.open_picker(
         "permission",
         "权限模式",
@@ -162,7 +162,7 @@ def cmd_permission(app: "LrmneAgentApp") -> None:
 
 
 @command("context", "选择上下文窗口大小")
-def cmd_context(app: "LrmneAgentApp") -> None:
+def cmd_context(app: "LrmneCodeApp") -> None:
     app.open_picker(
         "context",
         "上下文窗口",
@@ -177,7 +177,7 @@ def cmd_context(app: "LrmneAgentApp") -> None:
 
 
 @command("cwd", "切换工作目录", aliases=("cd",))
-def cmd_cwd(app: "LrmneAgentApp") -> None:
+def cmd_cwd(app: "LrmneCodeApp") -> None:
     app.open_prompt(
         "cwd",
         "工作目录",
@@ -194,7 +194,7 @@ def cmd_cwd(app: "LrmneAgentApp") -> None:
 
 
 @command("sessions", "切换会话 / 载入磁盘存档", aliases=("resume",))
-def cmd_sessions(app: "LrmneAgentApp") -> None:
+def cmd_sessions(app: "LrmneCodeApp") -> None:
     app.open_sessions()
 
 
@@ -202,7 +202,7 @@ def cmd_sessions(app: "LrmneAgentApp") -> None:
 
 
 @command("attach", "附加文件到下一条消息")
-def cmd_attach(app: "LrmneAgentApp") -> None:
+def cmd_attach(app: "LrmneCodeApp") -> None:
     app.open_prompt(
         "attach",
         "附加文件",
@@ -213,7 +213,7 @@ def cmd_attach(app: "LrmneAgentApp") -> None:
 
 
 @command("attachments", "查看待发送附件", aliases=("attlist",))
-def cmd_attachments(app: "LrmneAgentApp") -> None:
+def cmd_attachments(app: "LrmneCodeApp") -> None:
     attachments = app.pending_attachments
     if not attachments:
         app.notify_line("暂无待发送附件", "info")
@@ -225,7 +225,7 @@ def cmd_attachments(app: "LrmneAgentApp") -> None:
     app.notify_line("\n".join(lines), "info")
 
 
-def attach_file(app: "LrmneAgentApp", raw_path: str) -> None:
+def attach_file(app: "LrmneCodeApp", raw_path: str) -> None:
     """读盘并登记为待发送附件（/attach 卡片提交后的动作）。"""
     path = os.path.abspath(raw_path)
     if not os.path.isfile(path):
@@ -255,7 +255,7 @@ def attach_file(app: "LrmneAgentApp", raw_path: str) -> None:
 
 
 @command("skills", "浏览并执行 skill")
-def cmd_skills(app: "LrmneAgentApp") -> None:
+def cmd_skills(app: "LrmneCodeApp") -> None:
     app.open_picker(
         "skills",
         "Skills",
@@ -265,7 +265,7 @@ def cmd_skills(app: "LrmneAgentApp") -> None:
 
 
 @command("mcp", "查看已连接的 MCP 服务器")
-def cmd_mcp(app: "LrmneAgentApp") -> None:
+def cmd_mcp(app: "LrmneCodeApp") -> None:
     app.send("mcp.list", {})
 
 
@@ -273,7 +273,7 @@ def cmd_mcp(app: "LrmneAgentApp") -> None:
 
 
 @command("diff", "查看某一轮的文件改动")
-def cmd_diff(app: "LrmneAgentApp") -> None:
+def cmd_diff(app: "LrmneCodeApp") -> None:
     app.open_picker(
         "diff",
         "改动轮次",
@@ -283,7 +283,7 @@ def cmd_diff(app: "LrmneAgentApp") -> None:
 
 
 @command("undo", "撤销某一轮的文件修改")
-def cmd_undo(app: "LrmneAgentApp") -> None:
+def cmd_undo(app: "LrmneCodeApp") -> None:
     app.open_picker(
         "undo",
         "撤销改动",

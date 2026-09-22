@@ -14,13 +14,13 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable
 
 if TYPE_CHECKING:
-    from .app import LrmneAgentApp
+    from .app import LrmneCodeApp
     from .conversation import Conversation
 
 # 成功回执携带的 result → 展示
-ResultRenderer = Callable[["LrmneAgentApp", "Conversation", Any], None]
+ResultRenderer = Callable[["LrmneCodeApp", "Conversation", Any], None]
 # 后端单向推送的事件 data → 展示
-EventHandler = Callable[["LrmneAgentApp", "Conversation", dict], None]
+EventHandler = Callable[["LrmneCodeApp", "Conversation", dict], None]
 
 
 @dataclass(frozen=True)

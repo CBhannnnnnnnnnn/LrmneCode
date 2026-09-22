@@ -11,8 +11,8 @@ from agentscope.model import ChatModelBase
 ThinkingLevel = Literal["off", "low", "medium", "high"]
 _THINKING_LEVELS = frozenset({"off", "low", "medium", "high"})
 
-# 用户主目录全局配置：~/.lrmneagent/settings.json（与项目 cwd 下的 .lrmneagent/ 分离）
-_GLOBAL_HOME = Path.home() / ".lrmneagent"
+# 用户主目录全局配置：~/.lrmnecode/settings.json（与项目 cwd 下的 .lrmnecode/ 分离）
+_GLOBAL_HOME = Path.home() / ".lrmnecode"
 _SETTINGS_PATH = _GLOBAL_HOME / "settings.json"
 
 # config.set / get 路由到本模块的 key
@@ -113,7 +113,7 @@ class ModelConfig:
         self._settings["context_size"] = value
 
     def _load(self) -> None:
-        """从 ``~/.lrmneagent/settings.json`` 读取；缺文件或还没配过则保持空默认。
+        """从 ``~/.lrmnecode/settings.json`` 读取；缺文件或还没配过则保持空默认。
 
         失败原因记进 ``_settings_error`` 而不是静默吞掉：用户手写配置写错时，
         至少有个说法（随公开视图带出，前端会提示）。
@@ -167,7 +167,7 @@ class ModelConfig:
         self._settings["model"] = model_id.strip()
 
     def _save(self) -> None:
-        """将提供方 / API / 默认模型写回 ~/.lrmneagent/settings.json（合并其它段）。"""
+        """将提供方 / API / 默认模型写回 ~/.lrmnecode/settings.json（合并其它段）。"""
         path = _SETTINGS_PATH
         data: dict[str, Any] = {}
         if path.is_file():
