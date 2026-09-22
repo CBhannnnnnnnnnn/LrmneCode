@@ -53,6 +53,10 @@ def _render_config(app, conv, result: Any) -> None:
     # {key: value} 的话，状态栏拿不到 thinking_level / mode，会一直显示默认值。
     if set(flat) == {"key", "value"}:
         flat = {str(flat["key"]): flat["value"]}
+    # 全局配置读失败（手写 json 写错、凭证不被接受）：说一声，别让人以为填了没生效
+    error = flat.get("settings_error")
+    if error and app.config.get("settings_error") != error:
+        app.notify_line(f"全局配置未生效：{error}", "warn", conv=conv)
     app.apply_config(flat)
     # 缓存给选择卡片标「当前项」用（/thinking、/permission、/cwd）
     app.remember_config(flat)

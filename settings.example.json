@@ -1,0 +1,10 @@
+{
+  "model": {
+    "provider_type": "openai_credential",
+    "credential": {
+      "api_key": "sk-在此填入你的密钥",
+      "base_url": "https://api.openai.com/v1"
+    },
+    "model": "gpt-4o"
+  }
+}

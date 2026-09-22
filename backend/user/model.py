@@ -14,8 +14,6 @@ _THINKING_LEVELS = frozenset({"off", "low", "medium", "high"})
 # 用户主目录全局配置：~/.lrmneagent/settings.json（与项目 cwd 下的 .lrmneagent/ 分离）
 _GLOBAL_HOME = Path.home() / ".lrmneagent"
 _SETTINGS_PATH = _GLOBAL_HOME / "settings.json"
-# 开发期曾写在仓库根的旧路径；全局文件不存在时迁一次
-_LEGACY_SETTINGS_PATH = Path(__file__).resolve().parents[2] / "settings.json"
 
 # config.set / get 路由到本模块的 key
 MODEL_CONFIG_KEYS = frozenset(
@@ -26,22 +24,6 @@ MODEL_CONFIG_KEYS = frozenset(
         "context_size",
     },
 )
-
-
-def _ensure_settings_file() -> Path:
-    """返回全局 settings 路径；若仅有仓库根旧文件则复制到用户主目录。"""
-    if _SETTINGS_PATH.is_file():
-        return _SETTINGS_PATH
-    if _LEGACY_SETTINGS_PATH.is_file():
-        try:
-            _GLOBAL_HOME.mkdir(parents=True, exist_ok=True)
-            _SETTINGS_PATH.write_text(
-                _LEGACY_SETTINGS_PATH.read_text(encoding="utf-8"),
-                encoding="utf-8",
-            )
-        except OSError:
-            pass
-    return _SETTINGS_PATH
 
 
 def _empty_settings() -> dict[str, Any]:
@@ -65,6 +47,8 @@ class ModelConfig:
 
     def __init__(self) -> None:
         self._settings: dict[str, Any] = _empty_settings()
+        # 上次加载失败的原因（None 表示正常）；随公开视图带出，不再静默吞掉
+        self._settings_error: str | None = None
         self._load()
 
     def get(self) -> dict[str, Any]:
@@ -129,37 +113,53 @@ class ModelConfig:
         self._settings["context_size"] = value
 
     def _load(self) -> None:
-        """从 ~/.lrmneagent/settings.json 读取；缺文件/缺字段/无效则保持空默认。"""
-        path = _ensure_settings_file()
-        if not path.is_file():
+        """从 ``~/.lrmneagent/settings.json`` 读取；缺文件或还没配过则保持空默认。
+
+        失败原因记进 ``_settings_error`` 而不是静默吞掉：用户手写配置写错时，
+        至少有个说法（随公开视图带出，前端会提示）。
+        """
+        self._settings_error = None
+        if not _SETTINGS_PATH.is_file():
             return
 
         try:
-            raw = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
+            raw = json.loads(_SETTINGS_PATH.read_text(encoding="utf-8"))
+        except OSError as exc:
+            self._settings_error = f"读取失败：{exc}"
+            return
+        except json.JSONDecodeError as exc:
+            self._settings_error = f"不是合法 JSON：{exc}"
             return
 
         if not isinstance(raw, dict):
+            self._settings_error = "顶层必须是 JSON 对象"
             return
 
+        # 没有 model 段＝还没配过，保持空默认，不算错误
         section = raw.get("model")
+        if section is None:
+            return
         if not isinstance(section, dict):
+            self._settings_error = "model 段必须是 JSON 对象"
             return
 
         provider_type = section.get("provider_type")
         credential = section.get("credential")
         model_id = section.get("model")
 
-        if not provider_type or not isinstance(provider_type, str):
+        if not isinstance(provider_type, str) or not provider_type:
+            self._settings_error = "缺少 model.provider_type"
+            return
+        if not isinstance(model_id, str) or not model_id.strip():
+            self._settings_error = "缺少 model.model"
             return
         if not isinstance(credential, dict):
             credential = {}
-        if not model_id or not isinstance(model_id, str) or not model_id.strip():
-            return
 
         try:
             CredentialFactory.from_dict({"type": provider_type, **credential})
-        except Exception:
+        except Exception as exc:
+            self._settings_error = f"凭证字段不被接受：{exc}"
             return
 
         self._settings["provider_type"] = provider_type
@@ -273,6 +273,7 @@ class ModelConfig:
             "stream": self._settings["stream"],
             "max_retries": self._settings["max_retries"],
             "context_size": self._settings["context_size"],
+            "settings_error": self._settings_error,
         }
 
 ModelConfig._UPDATE_HANDLERS = {
