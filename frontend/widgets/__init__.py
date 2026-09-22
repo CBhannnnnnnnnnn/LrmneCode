@@ -37,12 +37,14 @@ from .tool_view import (
 from .approval import (
     ApprovalPanel,
 )
-from .panels import (
+from .status import (
     _METER_CELLS,
     _SEPARATOR,
     _SEP_WIDTH,
     _TAIL_WIDTH,
     StatusBar,
+)
+from .side import (
     SidePanel,
 )
 from .input import (

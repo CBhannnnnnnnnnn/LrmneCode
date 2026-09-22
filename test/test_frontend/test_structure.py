@@ -20,8 +20,8 @@ def _py_files() -> list[Path]:
 def test_no_module_exceeds_line_cap():
     """前端不得再出现巨型模块。
 
-    上限 400 行是这次治理的收口标准：它恰好只放过原有的中号文件，
-    拆完之后最大的是 widgets/panels.py 的 391 行。
+    上限 400 行是这次治理的收口标准：它恰好只放过原有的中号文件。
+    超了就按职责继续拆，不要抬高这个数字。
     """
     oversized = {
         str(p.relative_to(FRONTEND)): len(p.read_text(encoding="utf-8").splitlines())

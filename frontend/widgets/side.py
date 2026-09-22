@@ -1,16 +1,15 @@
-"""外壳部件：底部状态栏与右侧栏（一类信息一个框）。
+"""右侧栏：这次会话跑出来的量化信息，一类信息一个小框。
 
-由 ``frontend/widgets.py`` 拆分而来，只做搬运，未改任何实现。
+由 ``frontend/widgets/panels.py`` 继续拆分而来，只做搬运，未改任何实现。
 """
 
-from __future__ import annotations
 
 from typing import Any
 from rich.cells import cell_len
 from rich.text import Text
-from textual.containers import Horizontal, Vertical, VerticalScroll
-from textual.widgets import (Static)
-from ..theme import (GLYPH_ACTIVE, GLYPH_METER_EMPTY, GLYPH_METER_FULL, GLYPH_ELLIPSIS, GLYPH_NOTICE, GLYPH_QUEUED, GLYPH_SPINNER, S_ERR, S_FAINT, S_GHOST, S_OK, S_TEXT, S_WARN)
+from textual.containers import Vertical, VerticalScroll
+from textual.widgets import Static
+from ..theme import GLYPH_ELLIPSIS, S_FAINT, S_TEXT
 from .base import _tail_path
 from .usage import _fmt_tokens, prompt_total
 
@@ -25,146 +24,6 @@ _SEP_WIDTH = cell_len(_SEPARATOR)
 # 被裁掉时补的省略号（含前面的空格）
 _TAIL_WIDTH = cell_len(f" {GLYPH_ELLIPSIS}")
 
-
-class StatusBar(Horizontal):
-    """底部状态栏：只留一眼要看到的三样——运行态（含审批数）、模型、上下文占用。
-
-    这行只有一格高，随后续开发一定塞不下更多东西，硬挤只会把要紧的三项挤到看不
-    见；其余量化信息在右侧栏 ``SidePanel``。ctx 表留在底部，因为它是"还能不能继续
-    跑"的即时信号，模型名是"在跟谁说话"的即时信号。
-    """
-
-    def __init__(self, **kwargs: Any) -> None:
-        super().__init__(**kwargs)
-        self._left = Static("", classes="status-left")
-        self._state = "idle"  # idle | working | queued
-        self._approvals = 0
-        self._model = ""
-        self._config_model = ""
-        self._context_size = 0
-        self._context_tokens = 0
-        self._cache_tokens = 0
-        self._cache_created = 0
-        self._provider = ""
-        self._frame = 0
-        self._timer = None
-
-    def compose(self):
-        yield self._left
-
-    def on_mount(self) -> None:
-        self._timer = self.set_interval(0.15, self._tick)
-        self._refresh()
-
-    def _tick(self) -> None:
-        if self._state == "working":
-            self._frame += 1
-            self._refresh()
-
-    # -- 对外接口 --
-
-    def set_state(self, state: str) -> None:
-        self._state = state
-        self._refresh()
-
-    def set_approvals(self, count: int) -> None:
-        self._approvals = count
-        self._refresh()
-
-    def set_model(self, name: str) -> None:
-        self._model = name or ""
-        self._refresh()
-
-    def set_usage(
-        self, context_tokens: int, cache_tokens: int, cache_created: int = 0
-    ) -> None:
-        """压力表只要最近一次调用的量；其余计数归右侧栏。"""
-        self._context_tokens = context_tokens
-        self._cache_tokens = cache_tokens
-        self._cache_created = cache_created
-        self._refresh()
-
-    def apply_config(self, flat: dict) -> None:
-        """这里只取影响压力表的两项：窗口大小与提供方口径。
-
-        字段缺席表示这次回执没说这件事，保留原值。
-        """
-        if flat.get("model"):
-            self._config_model = str(flat["model"])
-        if "provider_type" in flat:
-            self._provider = str(flat["provider_type"] or "")
-        if isinstance(flat.get("context_size"), int):
-            self._context_size = flat["context_size"]
-        self._refresh()
-
-    # -- 渲染 --
-
-    def _pressure(self) -> tuple[str, str] | None:
-        """上下文占用：(文本, 样式)；不知道窗口大小时不给这一段。"""
-        total = prompt_total(
-            self._context_tokens,
-            self._cache_tokens,
-            self._provider,
-            self._cache_created,
-        )
-        if not total or not self._context_size:
-            return None
-        ratio = total / self._context_size
-        if ratio < 0.6:
-            style = S_OK
-        elif ratio < 0.85:
-            style = S_WARN
-        else:
-            style = S_ERR
-        filled = max(1, min(_METER_CELLS, round(ratio * _METER_CELLS)))
-        bar = GLYPH_METER_FULL * filled + GLYPH_METER_EMPTY * (_METER_CELLS - filled)
-        return f"ctx {bar} {ratio * 100:.0f}%", style
-
-    def _segments(self) -> list[tuple[str, str]]:
-        """模型名 + 上下文占用，就这两段；其余量化信息在右侧栏。"""
-        segments: list[tuple[str, str]] = [
-            (self._model or self._config_model or "—", S_TEXT)
-        ]
-        pressure = self._pressure()
-        if pressure is not None:
-            segments.append(pressure)
-        return segments
-
-    def _refresh(self) -> None:
-        left = Text()
-        if self._state == "working":
-            left.append(
-                f"{GLYPH_SPINNER[self._frame % len(GLYPH_SPINNER)]} 运行中",
-                style=S_WARN,
-            )
-        elif self._state == "queued":
-            left.append(f"{GLYPH_QUEUED} 排队中", style=S_WARN)
-        else:
-            left.append(f"{GLYPH_ACTIVE} 就绪", style=S_OK)
-        if self._approvals:
-            left.append(
-                f"  {GLYPH_NOTICE['warn']} 审批×{self._approvals}", style=S_WARN
-            )
-
-        # 窄屏时从左往右保留，尾段先丢。宽度不能用左块的 size —— 它由 1fr 算出来，
-        # on_resize 时会晚一拍，所以自己从整行扣，末尾留一列不顶到边界。
-        available = self.content_size.width - 1
-        for index, (text, style) in enumerate(self._segments()):
-            if (
-                index
-                and available > 0
-                and left.cell_len + _SEP_WIDTH + cell_len(text) > available
-            ):
-                if left.cell_len + _TAIL_WIDTH <= available:
-                    left.append(f" {GLYPH_ELLIPSIS}", style=S_GHOST)
-                break
-            left.append(_SEPARATOR, style=S_GHOST)
-            left.append(text, style=style)
-
-        self._left.update(left)
-
-    def on_resize(self) -> None:
-        self._refresh()
 
 
 class SidePanel(Vertical):
@@ -204,6 +63,10 @@ class SidePanel(Vertical):
         self._cache_tokens = 0
         self._cache_created = 0
         self._gen_seconds = 0.0
+        # 在途调用的实时产出：估算 token、字数、已耗时（0 表示当前没有在途调用）
+        self._pending_out = 0
+        self._pending_chars = 0
+        self._pending_seconds = 0.0
         self._context_size = 0
         self._provider = ""
         self._thinking: str | None = None  # None = 还没读到配置
@@ -228,6 +91,9 @@ class SidePanel(Vertical):
         cache_tokens: int,
         cache_created: int = 0,
         gen_seconds: float = 0.0,
+        pending_out: int = 0,
+        pending_chars: int = 0,
+        pending_seconds: float = 0.0,
     ) -> None:
         self._tokens_in = tokens_in
         self._tokens_out = tokens_out
@@ -235,6 +101,9 @@ class SidePanel(Vertical):
         self._cache_tokens = cache_tokens
         self._cache_created = cache_created
         self._gen_seconds = gen_seconds
+        self._pending_out = pending_out
+        self._pending_chars = pending_chars
+        self._pending_seconds = pending_seconds
         self._refresh()
 
     def set_context(self, usage: dict | None) -> None:
@@ -324,6 +193,7 @@ class SidePanel(Vertical):
 
     def _metric_section(self) -> tuple[str, list[Text]]:
         rows = []
+        pending = self._pending_rows()
         if self._tokens_in or self._tokens_out:
             rows.append(
                 self._row(
@@ -331,7 +201,8 @@ class SidePanel(Vertical):
                     f"↑{_fmt_tokens(self._tokens_in)} ↓{_fmt_tokens(self._tokens_out)}",
                 )
             )
-        if self._gen_seconds and self._tokens_out:
+        # 真值吞吐与在途吞吐是同一个量的两个时刻，同时出现就成了两行"吞吐"
+        if self._gen_seconds and self._tokens_out and not pending:
             # 吞吐取整场累计：单次调用的量抖得厉害，看不出趋势
             rows.append(
                 self._row("吞吐", f"{self._tokens_out / self._gen_seconds:.0f} tok/s")
@@ -339,7 +210,34 @@ class SidePanel(Vertical):
         hit = self._cache_hit()
         if hit:
             rows.append(self._row("缓存命中", hit))
+        rows.extend(pending)
         return "用量", rows
+
+    def _pending_rows(self) -> list[Text]:
+        """在途调用的实时产出。
+
+        provider 只在 ``model.end`` 报一次量，所以这次调用跑到一半时上面那些真值行
+        全是空的（发送时 ``reset_tokens`` 归零）——不补这一组，整框会被收掉。
+        估算值一律带 ``≈``，没校准过时干脆只报字数，不假装知道 token。
+        """
+        if not (self._pending_out or self._pending_chars):
+            return []
+        rows = []
+        if self._pending_out:
+            rows.append(self._row("输出", f"≈{_fmt_tokens(self._pending_out)}"))
+        else:
+            rows.append(self._row("输出", f"{self._pending_chars} 字"))
+        spent = self._pending_seconds
+        if spent > 0.5:
+            if self._pending_out:
+                rows.append(
+                    self._row("吞吐", f"≈{self._pending_out / spent:.0f} tok/s")
+                )
+            elif self._pending_chars:
+                rows.append(
+                    self._row("吞吐", f"≈{self._pending_chars / spent:.0f} 字/s")
+                )
+        return rows
 
     def _cache_hit(self) -> str:
         """缓存命中率：这次调用从提示缓存读到的量 ÷ 提示词总量。

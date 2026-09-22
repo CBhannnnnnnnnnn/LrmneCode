@@ -106,6 +106,7 @@ class SessionsMixin:
         self.status.set_usage(
             conv.context_tokens, conv.cache_tokens, conv.cache_created
         )
+        pending_out, pending_chars = conv.live_output()
         self.side.set_usage(
             conv.tokens_in,
             conv.tokens_out,
@@ -113,6 +114,9 @@ class SessionsMixin:
             conv.cache_tokens,
             conv.cache_created,
             conv.gen_seconds,
+            pending_out,
+            pending_chars,
+            conv.live_seconds(),
         )
         self.side.set_context(conv.context_usage)
         self.side.set_conversation(conv.cid)

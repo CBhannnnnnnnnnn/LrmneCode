@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
 from proxy_layer.schema import (
@@ -860,3 +862,60 @@ async def test_run_end_settles_blocks_left_running(make_app):
 
         assert "已中断" in str(view.border_subtitle)
         assert conv.tools == {}
+
+
+def _metric_rows(app) -> list[str]:
+    """右侧栏「用量」框当前的行文本。"""
+    return [row.plain for row in app.side._metric_section()[1]]
+
+
+@pytest.mark.anyio
+async def test_side_panel_keeps_usage_visible_while_a_call_is_inflight(make_app):
+    """思考进行中用量框不能消失。
+
+    provider 只在 model.end 报一次量，而发送时 reset_tokens 会把本次运行的计数归零——
+    于是整个调用期间一行都凑不出来，框被 `_fill` 收起，用户看到的是"用量监控没了"。
+    """
+    app = make_app()
+
+    def emit(name, data=None):
+        app._dispatch_event(make_event(app.store.current.cid, name, data or {}))
+
+    async def tick(pilot):
+        """跨过 STREAM_FLUSH_INTERVAL，让那个合并节拍真的跑一次。"""
+        await asyncio.sleep(0.12)
+        await pilot.pause()
+
+    async with app.run_test() as pilot:
+        await pilot.pause()
+
+        # 第一次调用：没有校准基准，只报字数，不假装知道 token
+        app.send("你好")
+        await pilot.pause()
+        emit("model.start", {"model_name": "m"})
+        emit("stream.thinking.start", {"reply_id": "r1", "block_id": "t1"})
+        emit("stream.thinking", {"reply_id": "r1", "block_id": "t1", "text_delta": "先想一段够用的内容。"})
+        await tick(pilot)
+
+        assert app.side._metric_box.display is True
+        assert any("输出" in r and "字" in r for r in _metric_rows(app)), _metric_rows(app)
+        assert not any("≈" in r for r in _metric_rows(app))
+
+        # 真值到了，估算退场
+        emit("model.end", {"input_tokens": 3000, "output_tokens": 12})
+        await pilot.pause()
+        assert not any("≈" in r for r in _metric_rows(app)), _metric_rows(app)
+        assert any("↑" in r for r in _metric_rows(app))
+
+        # 第二次调用：用上一次实测的每字量折算，中途就给估算 token
+        app.send("再来")
+        await pilot.pause()
+        emit("model.start", {"model_name": "m"})
+        emit("stream.thinking.start", {"reply_id": "r2", "block_id": "t2"})
+        emit("stream.thinking", {"reply_id": "r2", "block_id": "t2", "text_delta": "又想到一些内容。"})
+        app.store.current.call_started -= 2.0  # 让吞吐这一行真的凑得出来
+        await tick(pilot)
+
+        assert any("≈" in r and "输出" in r for r in _metric_rows(app)), _metric_rows(app)
+        # 真值行与在途行是同一个量的两个时刻，不能同时出现成两行"吞吐"
+        assert sum(1 for r in _metric_rows(app) if "吞吐" in r) == 1, _metric_rows(app)

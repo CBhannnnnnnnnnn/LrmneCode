@@ -7,6 +7,8 @@
 
 from __future__ import annotations
 
+import time
+
 from dataclasses import dataclass
 from typing import Any
 
@@ -166,6 +168,9 @@ class Conversation:
         self.gen_seconds = 0.0
         # 最近一次 model.start 的时刻（0 表示当前没有在途调用）
         self.call_started = 0.0
+        # 上一次调用实测出的「每字多少 token」。provider 只在 model.end 报一次量，
+        # 在途时用它把已产出的字数折成 token；model.end 后立刻被真值取代。
+        self.output_ratio = 0.0
         # 最近一个模型调用产出的文字块（thinking + 正文）：provider 只按「每次调用」报
         # output_tokens，而思考也是模型的产出，所以按各自字数把这份量分摊下去
         self.call_outputs: list[Any] = []
@@ -248,8 +253,24 @@ class Conversation:
         chars = sum(item.chars for item in targets)
         if not chars:
             return
+        # 顺手校准下一次在途估算的口径：这次实测了多少 token ÷ 多少字
+        self.output_ratio = tokens / chars
         for item in targets:
             item.mark_usage(int(tokens * item.chars / chars + 0.5))
+
+    def live_output(self) -> tuple[int, int]:
+        """在途调用的产出：``(估算 token 数, 已产出字数)``。
+
+        还没校准过（本次会话第一次调用）时估算给 0，调用方据此退回显示字数。
+        """
+        chars = sum(item.chars for item in self.call_outputs)
+        if not chars or not self.output_ratio:
+            return 0, chars
+        return int(chars * self.output_ratio + 0.5), chars
+
+    def live_seconds(self) -> float:
+        """在途调用已耗时；没有在途调用时为 0。"""
+        return (time.monotonic() - self.call_started) if self.call_started else 0.0
 
     def finalize_streams(self) -> None:
         """收尾所有仍在索引里的文本块（reply 结束时兜底）。"""

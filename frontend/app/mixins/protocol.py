@@ -108,9 +108,16 @@ class ProtocolMixin:
 
     def _flush_streams(self) -> None:
         """把各会话攒下的流式文本合并写入并保持粘底。"""
+        flushed = False
         for conv in self.store.all():
             if conv.flush_dirty():
                 conv.view.stick_bottom()
+                flushed = True
+        # 本轮有写入、或有模型调用在途时，顺手刷一次状态栏与右侧栏：
+        # provider 只在 model.end 报一次量，在途那一段靠字数折算的估算必须跟着流式走，
+        # 否则用量框整轮空着被收起（见 SidePanel._pending_rows）。
+        if flushed or self.store.current.call_started:
+            self.refresh_status()
 
     def send_chat(self, text: str) -> None:
         """普通文本 → chat.send（后端按会话 FIFO 排队）。"""
